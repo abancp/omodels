@@ -5731,7 +5731,7 @@ function checkIncomingModuleAPI() {
   ignoredModuleProp('fetchSettings');
 }
 var ASM_CONSTS = {
-  91228: ($0, $1) => { report_train($0,$1); }
+  91276: ($0, $1) => { report_train($0, $1); }
 };
 var wasmImports = {
   /** @export */
@@ -5799,8 +5799,8 @@ var __emscripten_stack_alloc = wasmExports['_emscripten_stack_alloc']
 var _emscripten_stack_get_current = wasmExports['emscripten_stack_get_current']
 var dynCall_ii = Module['dynCall_ii'] = createExportWrapper('dynCall_ii', 2);
 var dynCall_v = Module['dynCall_v'] = createExportWrapper('dynCall_v', 1);
-var dynCall_vid = Module['dynCall_vid'] = createExportWrapper('dynCall_vid', 3);
-var dynCall_viid = Module['dynCall_viid'] = createExportWrapper('dynCall_viid', 4);
+var dynCall_viiiiid = Module['dynCall_viiiiid'] = createExportWrapper('dynCall_viiiiid', 7);
+var dynCall_viiiiiid = Module['dynCall_viiiiiid'] = createExportWrapper('dynCall_viiiiiid', 8);
 var dynCall_iiii = Module['dynCall_iiii'] = createExportWrapper('dynCall_iiii', 4);
 var dynCall_jiji = Module['dynCall_jiji'] = createExportWrapper('dynCall_jiji', 4);
 var dynCall_iidiiii = Module['dynCall_iidiiii'] = createExportWrapper('dynCall_iidiiii', 7);

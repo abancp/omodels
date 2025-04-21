@@ -18,12 +18,12 @@ const LossChart = ({ data }) => {
           <XAxis dataKey="epoch" />
           <YAxis />
           <Tooltip />
-<Line
-  type="linear"               // <-- use linear for sharp corners
-  dataKey="loss"
-  stroke="#8884d8"
-  strokeWidth={2}
-/>
+          <Line
+            type="linear"               // <-- use linear for sharp corners
+            dataKey="loss"
+            stroke="#8884d8"
+            strokeWidth={2}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
