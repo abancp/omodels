@@ -1,17 +1,15 @@
-#include <cmath>
-#include <iostream>
-#include <vector>
-#include <fstream>
-#include <emscripten/bind.h>
-#include <emscripten.h>
-#include <sstream>
-#include <unistd.h>
-#include <thread>
 #include <chrono>
-
+#include <cmath>
+#include <emscripten.h>
+#include <emscripten/bind.h>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <thread>
+#include <unistd.h>
+#include <vector>
 
 using namespace std;
-
 
 class NN {
 
@@ -27,7 +25,7 @@ public:
     no_inputs = no_ips;
     no_outputs = no_ops;
     // w = vector<vector<int>>(no_ips,vector<int>(no_ops,1));
-    w = vector<vector<double>>(no_inputs,vector<double>(no_outputs,1));
+    w = vector<vector<double>>(no_inputs, vector<double>(no_outputs, 1));
     // b = vector<int>(no_ops,4);
     b = {2, 2, 2};
     inter_z = vector<vector<int>>(no_ips, vector<int>(no_ops));
@@ -142,16 +140,16 @@ void train(int epoches, double lr) {
       nn->softmax(nn->z);
       loss = nn->find_loss(nn->z, data_y[i]);
       vector<double> dz = nn->find_dz(nn->z, data_y[i]);
-      //cout<<"DZ : - > "<<endl; 
-      for(int j = 0 ; j < 3 ; j++){
-      //  cout<<dz[j]<<" ";
+      // cout<<"DZ : - > "<<endl;
+      for (int j = 0; j < 3; j++) {
+        //  cout<<dz[j]<<" ";
       }
-      vector<double> xx= {1.0,2.0};
+      vector<double> xx = {1.0, 2.0};
       vector<vector<double>> dw = nn->find_dw(dz, data_x[i]);
-      //cout << "DW : ->"<<endl;
+      // cout << "DW : ->"<<endl;
       for (int k = 0; k < nn->no_inputs; k++) {
         for (int h = 0; h < nn->no_outputs; h++) {
-          //cout<<dw[k][h]<<" ";
+          // cout<<dw[k][h]<<" ";
           nn->w[k][h] -= (lr * dw[k][h]);
         }
       }
@@ -159,13 +157,10 @@ void train(int epoches, double lr) {
         nn->b[j] -= (lr * dz[j]);
       }
     }
-    this_thread::sleep_for(chrono::milliseconds(50));  // 500 ms
-    EM_ASM_({
-      report_train($0,$1);
-    },epoch,loss);
+    EM_ASM_({ report_train($0, $1); }, epoch, loss);
     emscripten_sleep(0); // yield to JS
 
-    //cout << "Epoch : " << epoch << " Loss : " << loss << endl;
+    // cout << "Epoch : " << epoch << " Loss : " << loss << endl;
   }
 
   cout << "\n";
@@ -174,4 +169,3 @@ void train(int epoches, double lr) {
 EMSCRIPTEN_BINDINGS(training_bindings) {
   emscripten::function("train", &train);
 }
-
