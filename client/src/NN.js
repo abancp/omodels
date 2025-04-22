@@ -13,8 +13,8 @@ const colors = {
 const NeuralNetworkVisualization = ({ ips, ops }) => {
   // Network architecture
   const layers = [
-    { type: "input", neurons: ips },
-    { type: "output", neurons: ops },
+    { type: "input", neurons: ips > 100 ? 100 : ips },
+    { type: "output", neurons: ops > 100 ? 100 : ops },
   ];
 
   // State for animation triggers
@@ -28,7 +28,7 @@ const NeuralNetworkVisualization = ({ ips, ops }) => {
   const layerSpacing = width / (layers.length + 1);
 
   return (
-    <div className="flex justify-center items-center w-full h-full">
+    <div className="flex justify-center items-center w-full h-[30rem]">
       <svg width={width} height={height} className="overflow-visible">
         {/* Draw connections */}
         {layers.map((layer, layerIndex) => {

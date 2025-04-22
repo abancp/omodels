@@ -57,14 +57,14 @@ function App() {
     const y = [0, 0, 0, 1, 1, 1, 2, 2, 2];
 
     const vecVectorDouble = new module.VectorVectorDouble();
-    x.forEach((r_x) => {
+    dataset.inputs.forEach((r_x) => {
       const vec = new module.VectorDouble();
       r_x.forEach((val) => vec.push_back(val))
       vecVectorDouble.push_back(vec)
     })
 
     const vectorDouble = new module.VectorDouble();
-    y.forEach((val) => { vectorDouble.push_back(val) })
+    dataset.outputs.forEach((val) => { vectorDouble.push_back(val) })
     module.train(ips, ops, vecVectorDouble, vectorDouble, epoches, lr || 0.01)
   }
 
@@ -133,42 +133,50 @@ function App() {
 
           <h5 className='text-xl font-semibold w-full mt-5'> Dataset </h5>
           <div className='flex gap-10'>
-            <div className='flex rounded-lg bg-gray-100 p-2 items-center flex-col gap-2'>
+            <div className='p-4 text-center rounded-lg  bg-gray-100 '>
               <h3>Input</h3>
-              {
-                dataset.inputs.map((data_raw, i) => (
-                  <div className='gap-2 flex '>
-                    {data_raw.map((data, j) => (
-                      <input
-                        className="ring-1 focus:ring w-[4rem] rounded-lg ring-blue-600 px-2 focus:outline-none"
-                        value={data}
-                        onChange={(e) => setDataset((prev) => ({
-                          ...prev, inputs: prev.inputs.map((data_raw0, i0) =>
-                            i === i0 ? data_raw0.map((data0, j0) => j === j0 ? e.target.value : data0) : data_raw0)
-                        }))}
-                      />
-                    ))
-                    }
-                  </div>
-                ))
-              }
+              <div className='flex max-w-[30rem] overflow-x-scroll p-2 flex-col gap-2'>
+                {
+                  dataset.inputs.map((data_raw, i) => (
+                    <div className='gap-2  flex '>
+                      {data_raw.map((data, j) => (
+                        <input
+                          className="ring-1 text-center focus:ring w-[4rem] rounded-lg ring-blue-600 px-2 focus:outline-none"
+                          value={data}
+                          onChange={(e) => setDataset((prev) => ({
+                            ...prev, inputs: prev.inputs.map((data_raw0, i0) =>
+                              i === i0 ? data_raw0.map((data0, j0) => j === j0 ? Number(e.target.value) : data0) : data_raw0)
+                          }))}
+                        />
+                      ))
+                      }
+                    </div>
+                  ))
+                }
+              </div>
             </div>
             <div className='flex items-center bg-gray-100 rounded-lg p-2 flex-col gap-2'>
 
               <h3>output</h3>
               {
-                dataset.outputs.map((data) => (
+                dataset.outputs.map((data, i) => (
                   <div className='gap-2 flex '>
 
-                    <input className="ring-1 focus:ring rounded-lg w-[4rem] ring-blue-600 px-2 focus:outline-none" value={data} />
+                    <input
+                      onChange={(e) =>
+                        setDataset((prev) =>
+                          ({ ...prev, outputs: prev.outputs.map((val, i0) => i === i0 ? Number(e.target.value) : val) })
+                        )}
+                      className="ring-1 focus:ring rounded-lg w-[4rem] ring-blue-600 px-2 focus:outline-none"
+                      value={data} />
                   </div>
                 ))
               }
             </div>
-            <Vis />
+            <Vis dataset={dataset} />
 
           </div>
-          <div onClick={() => setDataset((d) => ({ inputs: [...d.inputs, Array.from({ length: ips }, (_) => 0)], outputs: [...d.outputs, 0.1] }))} className='cursor-pointer rounded-md w-[30rem] text-center hover:bg-blue-600 duration-300 text-xs border-black border h-8 '>
+          <div onClick={() => setDataset((d) => ({ inputs: [...d.inputs, Array.from({ length: ips }, (_) => 0)], outputs: [...d.outputs, 0] }))} className='cursor-pointer rounded-md w-[30rem] text-center hover:bg-blue-600 duration-300 text-xs border-black border h-8 '>
             Add data
           </div>
 
