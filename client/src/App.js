@@ -7,13 +7,19 @@ function App() {
   const [showSideBar, setShowSideBar] = useState(true);
   const [collapseSideBar, setCollapseSideBar] = useState(false)
   const [module, setModule] = useState()
-  const [epoches, setEpoches] = useState(10)
+  const [epoches, setEpoches] = useState(100)
   const [data, setData] = useState(
     Array.from({ length: 10 }, (_, i) => ({ epoch: i + 1, loss: null }))
   )
   const [ips, setIps] = useState(2)
   const [ops, setOps] = useState(3)
-  const [dataset, setDataset] = useState({ inputs: [], outputs: [] })
+  const [dataset, setDataset] = useState({
+    inputs: [[-1.0, 0.5, 0.2], [-0.8, 0.3, 0.2], [-1.2, 0.1, 0.3],
+    [1.0, 0.5, 0.4], [0.8, 0.3, 0.4], [1.2, 0.1, 0.4],
+    [0.0, 0.0, 0.1], [0.2, -0.2, 0.1], [-0.2, -0.2, 0.1]], outputs: [0, 0, 0, 1, 1, 1, 2, 2, 2]
+  })
+  const [currectEpoch, setCurentEpoch] = useState(0)
+  const [training, setTraining] = useState(false)
 
   useEffect(() => {
     const loadWasm = async () => {
@@ -27,6 +33,10 @@ function App() {
         setModule(Module)
         window.report_train = (epoch, loss) => {
           // setData((pr)=>[...pr,{epoch,loss}]);
+          setCurentEpoch(epoch)
+          if (Math.round((100 * ((epoch + 1) / epoches)), 1) === 100) {
+            setTraining(false)
+          }
           setData((prevData) => {
             const updated = [...prevData];
             updated[epoch] = { ...updated[epoch], loss: loss };
@@ -49,6 +59,7 @@ function App() {
   }, [epoches])
 
   const train = (lr) => {
+    setTraining(true)
     const x = [
       [-1.0, 0.5, 0.2], [-0.8, 0.3, 0.2], [-1.2, 0.1, 0.3],
       [1.0, 0.5, 0.4], [0.8, 0.3, 0.4], [1.2, 0.1, 0.4],
@@ -190,7 +201,17 @@ function App() {
               <input type="range" value={epoches} max={1000} onChange={(e) => setEpoches(Number(e.target.value))} min={1} name="epochs" />
             </div>
             <input type="text" defaultValue={0.1} max="10" name="lr" className="ring-1 focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
-            <input className='bg-blue-600 text-white rounded-lg text-xl' type="submit" value="train" />
+            <button disabled={training} className='relative w-[10rem] rounded-lg h-6 bg-blue-600 text-white rounded-lg text-xl' type="submit"  >
+
+              <div
+                style={{ width: training ? (100 * ((currectEpoch + 1) / epoches)) + "%" :0  }}
+                className='absolute z-0 top-0 left-0 h-full bg-blue-800 rounded-lg transition-all duration-200 ease-in-out'
+              >
+
+              </div>
+
+              {training ? Math.round((100 * ((currectEpoch + 1) / epoches)), 1) + "%" : "train"}
+            </button>
           </form>
           <LossChart data={data} />
         </div>

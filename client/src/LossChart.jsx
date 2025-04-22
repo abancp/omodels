@@ -11,7 +11,7 @@ import {
 
 const LossChart = ({ data }) => {
   return (
-    <div className='w-full h-[40rem]'>
+    <div className='w-full h-[25rem]'>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />
