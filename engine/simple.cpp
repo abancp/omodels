@@ -35,6 +35,20 @@ public:
          << w[0].size() << endl;
   }
 
+  void setShape(int no_ips, int no_ops) {
+    no_inputs = no_ips;
+    no_outputs = no_ops;
+    // w = vector<vector<int>>(no_ips,vector<int>(no_ops,1));
+    w = vector<vector<double>>(no_inputs, vector<double>(no_outputs, 1));
+    // b = vector<int>(no_ops,4);
+    b = {2, 2, 2};
+    inter_z = vector<vector<int>>(no_ips, vector<int>(no_ops));
+    z = vector<double>(no_ops);
+    cout << "Making Neural Network with input : " << no_ips
+         << " output : " << no_ops << " Weights : " << w.size() << " x "
+         << w[0].size() << endl;
+  }
+
   void print_w() {
     for (int i = 0; i < no_inputs; i++) {
       for (int j = 0; j < no_outputs; j++) {
@@ -124,9 +138,10 @@ public:
   }
 };
 
+NN *nn = new NN(2, 3);
+
 void train(int ips, int ops, vector<vector<double>> data_x,
            vector<double> data_y, int epoches, double lr) {
-  NN *nn = new NN(ips, ops);
   /*
     vector<vector<double>> data_x = {{-1.0, 0.5}, {-0.8, 0.3}, {-1.2, 0.1},
                                      {1.0, 0.5},  {0.8, 0.3},  {1.2, 0.1},
@@ -135,6 +150,7 @@ void train(int ips, int ops, vector<vector<double>> data_x,
 
   */
   // training loop
+  nn->setShape(ips, ops);
   for (int epoch = 0; epoch < epoches; epoch++) {
     double loss = 0.0;
     for (int i = 0; i < data_x.size(); i++) {
@@ -169,9 +185,23 @@ void train(int ips, int ops, vector<vector<double>> data_x,
   cout << "\n";
 }
 
+int inference(vector<double> x) {
+  nn->forward(x);
+  nn->softmax(nn->z);
+  int maxI = 0;
+  for (int i = 0 ; i < nn->no_outputs ; i++){
+    if(nn->z[i] > nn->z[maxI]){
+      maxI = i;
+    }
+  }
+  return maxI;
+}
+
 EMSCRIPTEN_BINDINGS(training_bindings) {
   emscripten::function("train", &train);
+  emscripten::function("inference", &inference);
 
   emscripten::register_vector<vector<double>>("VectorVectorDouble");
   emscripten::register_vector<double>("VectorDouble");
 }
+

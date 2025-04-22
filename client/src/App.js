@@ -20,6 +20,7 @@ function App() {
   })
   const [currectEpoch, setCurentEpoch] = useState(0)
   const [training, setTraining] = useState(false)
+  const [output, setOutput] = useState()
   const [boudries, setBoundries] = useState({ topright: [0, 0], bottumleft: [0, 0], bottumright: [0, 0], topleft: [0, 0] })
 
   useEffect(() => {
@@ -82,6 +83,20 @@ function App() {
     const vectorDouble = new module.VectorDouble();
     dataset.outputs.forEach((val) => { vectorDouble.push_back(val) })
     module.train(ips, ops, vecVectorDouble, vectorDouble, epoches, lr || 0.01)
+  }
+
+  const inference = (form) => {
+    let inputs = []
+    for(let i = 0 ; i < ips ; i++){
+
+      inputs.push(Number(form['ip'+i].value))
+    }
+    console.log(inputs)
+    const vectorDouble = new module.VectorDouble();
+    inputs.forEach((val) => { vectorDouble.push_back(Number(val)) })
+    let out = module.inference(vectorDouble)
+    setOutput(out)
+    console.log(out)
   }
 
 
@@ -217,6 +232,22 @@ function App() {
           </form>
           <LossChart data={data} />
         </div>
+        <h5 className='text-xl font-semibold w-full mt-5'> Testing / Inference</h5>
+        <form onSubmit={(e) => { e.preventDefault(); inference(e.target) }} className='flex justify-center items-center  flex-col gap-3'>
+          <div className='flex items-center gap-3'>
+            <p>Input : </p>
+            {
+              Array.from({ length: ips }).map((_,i) => (
+                <input name={"ip"+i} defaultValue={0.2} className="ring-1 w-[3rem] focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
+              ))
+            }
+          </div>
+          <div className='flex gap-3'>
+            <h5>Output : </h5>
+            <input name="ip" value={output} className="ring-1 w-[3rem] focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
+          </div>
+          <input type="submit" value="predict" className="ring-1 focus:ring cursor-pointer rounded-lg bg-blue-600 px-2 focus:outline-none" />
+        </form>
       </div>
     </div >
   );
