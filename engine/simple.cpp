@@ -171,4 +171,7 @@ void train(int ips, int ops, vector<vector<double>> data_x,
 
 EMSCRIPTEN_BINDINGS(training_bindings) {
   emscripten::function("train", &train);
+
+  emscripten::register_vector<vector<double>>("VectorVectorDouble");
+  emscripten::register_vector<double>("VectorDouble");
 }

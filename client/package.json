@@ -19,7 +19,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "compile":"emcc ../engine/simple.cpp -o public/wasm/math.js -s MODULARIZE=1 -s 'EXPORT_NAME=\"createModule\"' -s ENVIRONMENT=web -s WASM=1 -s ASYNCIFY --bind"
   },
   "eslintConfig": {
     "extends": [
