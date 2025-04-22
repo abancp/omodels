@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import LossChart from './LossChart';
 import NN from "./NN"
 import Vis from "./Vis"
@@ -20,6 +20,7 @@ function App() {
   })
   const [currectEpoch, setCurentEpoch] = useState(0)
   const [training, setTraining] = useState(false)
+  const [boudries, setBoundries] = useState({ topright: [0, 0], bottumleft: [0, 0], bottumright: [0, 0], topleft: [0, 0] })
 
   useEffect(() => {
     const loadWasm = async () => {
@@ -31,19 +32,6 @@ function App() {
       script.onload = async () => {
         const Module = await window.createModule();
         setModule(Module)
-        window.report_train = (epoch, loss) => {
-          // setData((pr)=>[...pr,{epoch,loss}]);
-          setCurentEpoch(epoch)
-          if (Math.round((100 * ((epoch + 1) / epoches)), 1) === 100) {
-            setTraining(false)
-          }
-          setData((prevData) => {
-            const updated = [...prevData];
-            updated[epoch] = { ...updated[epoch], loss: loss };
-            return updated;
-          });
-
-        }
       }
 
       document.body.appendChild(script);
@@ -59,6 +47,23 @@ function App() {
   }, [epoches])
 
   const train = (lr) => {
+    window.report_train = (epoch, loss) => {
+      // setData((pr)=>[...pr,{epoch,loss}]);
+      setCurentEpoch(epoch)
+      console.log((epoch + 1) / epoches)
+      console.log(epoches)
+      console.log(Math.round((100 * ((epoch + 1) / epoches)), 1))
+      if (Math.round((100 * ((epoch + 1) / epoches)), 1) === 100) {
+        setTraining(false)
+      }
+      setData((prevData) => {
+        const updated = [...prevData];
+        updated[epoch] = { ...updated[epoch], loss: loss };
+        return updated;
+      });
+
+    }
+
     setTraining(true)
     const x = [
       [-1.0, 0.5, 0.2], [-0.8, 0.3, 0.2], [-1.2, 0.1, 0.3],
@@ -202,15 +207,12 @@ function App() {
             </div>
             <input type="text" defaultValue={0.1} max="10" name="lr" className="ring-1 focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
             <button disabled={training} className='relative w-[10rem] rounded-lg h-6 bg-blue-600 text-white rounded-lg text-xl' type="submit"  >
-
               <div
-                style={{ width: training ? (100 * ((currectEpoch + 1) / epoches)) + "%" :0  }}
+                style={{ width: training ? (100 * ((currectEpoch + 1) / epoches)) + "%" : 0 }}
                 className='absolute z-0 top-0 left-0 h-full bg-blue-800 rounded-lg transition-all duration-200 ease-in-out'
               >
-
               </div>
-
-              {training ? Math.round((100 * ((currectEpoch + 1) / epoches)), 1) + "%" : "train"}
+              <h3 className='z-[100] absolute top-0 left-0 w-full text-center'>{training ? Math.round((100 * ((currectEpoch + 1) / epoches)), 1) + "%" : "train"}</h3>
             </button>
           </form>
           <LossChart data={data} />
