@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import LossChart from './LossChart';
-import NN from "./NN"
-import Vis from "./Vis"
+import LossChart from './components/LossChart';
+import NN from "./components/NN"
+import Vis from "./components/Vis"
 
 function App() {
   const [showSideBar, setShowSideBar] = useState(true);
@@ -87,9 +87,9 @@ function App() {
 
   const inference = (form) => {
     let inputs = []
-    for(let i = 0 ; i < ips ; i++){
+    for (let i = 0; i < ips; i++) {
 
-      inputs.push(Number(form['ip'+i].value))
+      inputs.push(Number(form['ip' + i].value))
     }
     console.log(inputs)
     const vectorDouble = new module.VectorDouble();
@@ -237,8 +237,8 @@ function App() {
           <div className='flex items-center gap-3'>
             <p>Input : </p>
             {
-              Array.from({ length: ips }).map((_,i) => (
-                <input name={"ip"+i} defaultValue={0.2} className="ring-1 w-[3rem] focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
+              Array.from({ length: ips }).map((_, i) => (
+                <input name={"ip" + i} defaultValue={0.2} className="ring-1 w-[3rem] focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
               ))
             }
           </div>

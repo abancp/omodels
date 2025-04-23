@@ -159,9 +159,6 @@ void train(int ips, int ops, vector<vector<double>> data_x,
       loss = nn->find_loss(nn->z, data_y[i]);
       vector<double> dz = nn->find_dz(nn->z, data_y[i]);
       // cout<<"DZ : - > "<<endl;
-      for (int j = 0; j < 3; j++) {
-        //  cout<<dz[j]<<" ";
-      }
       vector<double> xx = {1.0, 2.0};
       vector<vector<double>> dw = nn->find_dw(dz, data_x[i]);
       // cout << "DW : ->"<<endl;
