@@ -21,7 +21,7 @@ public:
   vector<double> z;
   double lr = 0.01;
 
-  NN(int no_ips, int no_ops) {
+  NN(int no_ips , int no_ops) {
     no_inputs = no_ips;
     no_outputs = no_ops;
     // w = vector<vector<int>>(no_ips,vector<int>(no_ops,1));
@@ -175,13 +175,11 @@ void train(int ips, int ops, vector<vector<double>> data_x,
         nn->b[j] -= (lr * dz[j]);
       }
     }
-    this_thread::sleep_for(chrono::milliseconds(50)); // 500 ms
     EM_ASM_({ report_train($0, $1); }, epoch, loss);
     emscripten_sleep(0); // yield to JS
 
     // cout << "Epoch : " << epoch << " Loss : " << loss << endl;
   }
-
   cout << "\n";
 }
 
@@ -189,8 +187,8 @@ int inference(vector<double> x) {
   nn->forward(x);
   nn->softmax(nn->z);
   int maxI = 0;
-  for (int i = 0 ; i < nn->no_outputs ; i++){
-    if(nn->z[i] > nn->z[maxI]){
+  for (int i = 0; i < nn->no_outputs; i++) {
+    if (nn->z[i] > nn->z[maxI]) {
       maxI = i;
     }
   }
@@ -204,4 +202,3 @@ EMSCRIPTEN_BINDINGS(training_bindings) {
   emscripten::register_vector<vector<double>>("VectorVectorDouble");
   emscripten::register_vector<double>("VectorDouble");
 }
-
