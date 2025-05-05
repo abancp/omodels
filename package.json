@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.22.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -20,7 +22,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "compile":"emcc ../engine/simple.cpp -o public/wasm/math.js -s MODULARIZE=1 -s 'EXPORT_NAME=\"createModule\"' -s ENVIRONMENT=web -s WASM=1 -s ASYNCIFY --bind"
+    "compile": "emcc ../engine/simple.cpp -o public/wasm/math.js -s MODULARIZE=1 -s 'EXPORT_NAME=\"createModule\"' -s ENVIRONMENT=web -s WASM=1 -s ASYNCIFY --bind"
   },
   "eslintConfig": {
     "extends": [

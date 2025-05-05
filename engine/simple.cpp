@@ -21,7 +21,7 @@ public:
   vector<double> z;
   double lr = 0.01;
 
-  NN(int no_ips , int no_ops) {
+  NN(int no_ips, int no_ops) {
     no_inputs = no_ips;
     no_outputs = no_ops;
     // w = vector<vector<int>>(no_ips,vector<int>(no_ops,1));
@@ -73,7 +73,6 @@ public:
     }
     for (int i = 0; i < no_inputs; i++) {
       for (int j = 0; j < no_outputs; j++) {
-        // cout << b[j];
         inter_z[i][j] = (ips[i] * w[i][j]);
       }
     }
@@ -158,13 +157,9 @@ void train(int ips, int ops, vector<vector<double>> data_x,
       nn->softmax(nn->z);
       loss = nn->find_loss(nn->z, data_y[i]);
       vector<double> dz = nn->find_dz(nn->z, data_y[i]);
-      // cout<<"DZ : - > "<<endl;
-      vector<double> xx = {1.0, 2.0};
       vector<vector<double>> dw = nn->find_dw(dz, data_x[i]);
-      // cout << "DW : ->"<<endl;
       for (int k = 0; k < nn->no_inputs; k++) {
         for (int h = 0; h < nn->no_outputs; h++) {
-          // cout<<dw[k][h]<<" ";
           nn->w[k][h] -= (lr * dw[k][h]);
         }
       }
