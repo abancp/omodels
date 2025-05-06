@@ -1,9 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, } from 'react';
 import LossChart from './components/LossChart';
 import NN from "./components/NN"
 import Vis from "./components/Vis"
 
-function App() {
+const App = () => {
   const [showSideBar, setShowSideBar] = useState(true);
   const [collapseSideBar, setCollapseSideBar] = useState(false)
   const [module, setModule] = useState()
@@ -11,7 +11,7 @@ function App() {
   const [data, setData] = useState(
     Array.from({ length: 10 }, (_, i) => ({ epoch: i + 1, loss: null }))
   )
-  const [ips, setIps] = useState(2)
+  const [ips, setIps] = useState("720,20")
   const [ops, setOps] = useState(3)
   const [dataset, setDataset] = useState({
     inputs: [[-1.0, 0.5, 0.2], [-0.8, 0.3, 0.2], [-1.2, 0.1, 0.3],
@@ -112,7 +112,7 @@ function App() {
   useEffect(() => {
     if (dataset.inputs.length !== 0) {
       for (let i = 0; i < dataset.inputs.length; i++) {
-        for (let j = 0; j < ips; j++) {
+        for (let j = 0; j < ips[0]; j++) {
           if (dataset.inputs[i][j] === undefined || dataset.inputs[i][j] === null) {
             dataset.inputs[i][j] = 0
           }
@@ -125,11 +125,9 @@ function App() {
   }, [ips])
 
 
-
   return (
     <div className="bg-gray-200 h-screen w-full flex gap-4 p-4">
       {
-
         showSideBar &&
         <div className={`duration-200  h-full flex p-4 flex-col gap-3 justify-start overflow-hidden items-center ${collapseSideBar ? 'w-0 h-0' : 'w-[15rem]'}`}>
           <h1 className='text-4xl font-playwrite mt-2 mb-10'>Omodels</h1>
@@ -146,19 +144,12 @@ function App() {
           </div>
           <h1 className='text-3xl font-blac0.1k'>Neural Network</h1>
           <h5 className='text-xl font-semibold w-full mt-5'> Creating </h5>
-          <form className='flex gap-16 items-center'>
-            <div>
-              <label>Input Layer nuerons : </label>
-              <input onChange={(e) => setIps(Number(e.target.value))} value={ips} min={1} placeholder='input layer' type="number" className="ring-1 focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
-            </div>
-            <>|</>
-            <div>
-              <label>Output Layer nuerons : </label>
-              <input onChange={(e) => setOps(Number(e.target.value))} value={ops} min={1} placeholder="output layer" type="number" className="ring-1 focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
-            </div>
+          <form className='flex gap-2 items-center'>
+              <label>Layer (Seperated by commas) : </label>
+              <input onChange={(e) => setIps(e.target.value)} value={ips} placeholder='2,3,4' type="text" className="ring-1 focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
           </form>
           <NN
-            ips={ips} ops={ops}
+            layers_init={ips.split(",").map(d=>Number(d))}
           />
 
 
@@ -237,7 +228,7 @@ function App() {
           <div className='flex items-center gap-3'>
             <p>Input : </p>
             {
-              Array.from({ length: ips }).map((_, i) => (
+              Array.from({ length: ips[0] }).map((_, i) => (
                 <input name={"ip" + i} defaultValue={0.2} className="ring-1 w-[3rem] focus:ring rounded-lg ring-blue-600 px-2 focus:outline-none" />
               ))
             }

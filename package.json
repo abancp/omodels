@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@react-router/dev": "^7.5.3",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",
     "@testing-library/dom": "^10.4.0",
@@ -12,6 +13,8 @@
     "framer-motion": "^12.7.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-router": "^7.5.3",
+    "react-router-dom": "^7.5.3",
     "react-scripts": "5.0.1",
     "recharts": "^2.15.3",
     "three": "^0.175.0",
