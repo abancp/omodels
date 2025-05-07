@@ -1,0 +1,6 @@
+NN - 
+
+configuration :
+ [ (3,2) , relu , (4,3) , softmax ]  
+ return trainable model .
+

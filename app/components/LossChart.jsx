@@ -31,4 +31,3 @@ const LossChart = ({ data }) => {
 };
 
 export default LossChart;
-

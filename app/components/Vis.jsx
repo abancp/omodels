@@ -54,4 +54,3 @@ const ScatterPlot = ({ dataset }) => {
 };
 
 export default ScatterPlot;
-
