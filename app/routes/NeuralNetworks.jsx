@@ -7,7 +7,6 @@ import * as tf from "@tensorflow/tfjs";
 const App = () => {
   const [showSideBar, setShowSideBar] = useState(true);
   const [collapseSideBar, setCollapseSideBar] = useState(false);
-  const [module, setModule] = useState();
   const [epoches, setEpoches] = useState(100);
   const [data, setData] = useState(
     Array.from({ length: 10 }, (_, i) => ({ epoch: i + 1, loss: null }))
@@ -31,32 +30,7 @@ const App = () => {
   const [currectEpoch, setCurentEpoch] = useState(0);
   const [training, setTraining] = useState(false);
   const [output, setOutput] = useState();
-  const [boudries, setBoundries] = useState({
-    topright: [0, 0],
-    bottumleft: [0, 0],
-    bottumright: [0, 0],
-    topleft: [0, 0],
-  });
-
   let model;
-
-  useEffect(() => {
-    const loadWasm = async () => {
-      // Load the JS glue code dynamically using a script tag
-      const script = document.createElement("script");
-      script.src = "/wasm/math.js";
-      script.async = true;
-
-      script.onload = async () => {
-        const Module = await window.createModule();
-        setModule(Module);
-      };
-
-      document.body.appendChild(script);
-    };
-
-    loadWasm();
-  }, []);
 
   useEffect(() => {
     setData(
@@ -64,50 +38,7 @@ const App = () => {
     );
   }, [epoches]);
 
-  const train = (lr) => {
-    window.report_train = (epoch, loss) => {
-      // setData((pr)=>[...pr,{epoch,loss}]);
-      setCurentEpoch(epoch);
-      console.log((epoch + 1) / epoches);
-      console.log(epoches);
-      console.log(Math.round(100 * ((epoch + 1) / epoches), 1));
-      if (Math.round(100 * ((epoch + 1) / epoches), 1) === 100) {
-        setTraining(false);
-      }
-      setData((prevData) => {
-        const updated = [...prevData];
-        updated[epoch] = { ...updated[epoch], loss: loss };
-        return updated;
-      });
-    };
-
-    setTraining(true);
-    const x = [
-      [-1.0, 0.5, 0.2],
-      [-0.8, 0.3, 0.2],
-      [-1.2, 0.1, 0.3],
-      [1.0, 0.5, 0.4],
-      [0.8, 0.3, 0.4],
-      [1.2, 0.1, 0.4],
-      [0.0, 0.0, 0.1],
-      [0.2, -0.2, 0.1],
-      [-0.2, -0.2, 0.1],
-    ];
-    const y = [0, 0, 0, 1, 1, 1, 2, 2, 2];
-
-    const vecVectorDouble = new module.VectorVectorDouble();
-    dataset.inputs.forEach((r_x) => {
-      const vec = new module.VectorDouble();
-      r_x.forEach((val) => vec.push_back(val));
-      vecVectorDouble.push_back(vec);
-    });
-
-    const vectorDouble = new module.VectorDouble();
-    dataset.outputs.forEach((val) => {
-      vectorDouble.push_back(val);
-    });
-    module.train(ips, ops, vecVectorDouble, vectorDouble, epoches, lr || 0.01);
-  };
+  const train = (lr) => { };
 
   const inference = (form) => {
     let inputs = [];
@@ -115,13 +46,6 @@ const App = () => {
       inputs.push(Number(form["ip" + i].value));
     }
     console.log(inputs);
-    const vectorDouble = new module.VectorDouble();
-    inputs.forEach((val) => {
-      vectorDouble.push_back(Number(val));
-    });
-    let out = module.inference(vectorDouble);
-    setOutput(out);
-    console.log(out);
   };
 
   useEffect(() => {
