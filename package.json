@@ -10,6 +10,7 @@
   "dependencies": {
     "@react-router/node": "^7.5.3",
     "@react-router/serve": "^7.5.3",
+    "@tensorflow/tfjs": "^4.22.0",
     "framer-motion": "^12.9.7",
     "isbot": "^5.1.27",
     "react": "^19.1.0",

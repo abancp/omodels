@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import LossChart from "../components/LossChart";
 import NN from "../components/NN";
 import Vis from "../components/Vis";
+import * as tf from "@tensorflow/tfjs";
 
 const App = () => {
   const [showSideBar, setShowSideBar] = useState(true);
@@ -36,6 +37,8 @@ const App = () => {
     bottumright: [0, 0],
     topleft: [0, 0],
   });
+
+  let model;
 
   useEffect(() => {
     const loadWasm = async () => {
@@ -148,6 +151,36 @@ const App = () => {
     }
   }, [ips]);
 
+  const createModel = () => {
+    let config = ips.split(",");
+    console.log(ips);
+    model = tf.sequential();
+    for (let i = 0; i < config.length; i++) {
+      if (i === 0) {
+        //first layer
+        model.add(
+          tf.layers.dense({
+            inputShape: [Number(config[0])],
+            units: Number(config[1]),
+            activation: "relu",
+          })
+        );
+      } else if (i === config.length - 1 && i != 1) {
+        model.add(
+          tf.layers.dense({ units: Number(config[i]), activation: "softmax" })
+        );
+      } else {
+        if (i === 1) {
+          continue;
+        }
+        model.add(
+          tf.layers.dense({ units: Number(config[i]), activation: "relu" })
+        );
+      }
+    }
+    model.summary();
+  };
+
   return (
     <div className="dark:bg-gray-900 bg-gray-200 h-screen w-full flex gap-4 p-4">
       {showSideBar && (
@@ -192,7 +225,12 @@ const App = () => {
             />
           </form>
           <NN layers_init={ips.split(",").map((d) => Number(d))} />
-
+          <button
+            onClick={createModel}
+            className="ring-1 focus:ring cursor-pointer rounded-lg bg-blue-600 px-2 focus:outline-none"
+          >
+            create
+          </button>
           <h5 className="text-xl font-semibold w-full mt-5"> Dataset </h5>
           <div className="flex gap-10">
             <div className="p-4 text-center rounded-lg dark:bg-gray-900 bg-gray-100 ">
