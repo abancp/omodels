@@ -8,7 +8,7 @@ export default function LogisticRegressionVisualization({
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const lossCanvasRef = useRef<HTMLCanvasElement>(null);
   const rocCanvasRef = useRef<HTMLCanvasElement>(null);
-  const probCanvasRef = useRef<HTMLCanvasElement>(null);
+
   
   // State
   const [points, setPoints] = useState<Point[]>([]);
