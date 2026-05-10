@@ -4,7 +4,7 @@
  * Has a collapse/expand toggle to show/hide.
  */
 
-import { useCallback } from 'react';
+import { useCallback, type ReactElement } from 'react';
 import Icon from '../common/Icon';
 import { usePlayground } from '../../store';
 import type { CodeLine } from '../../models';
@@ -14,7 +14,7 @@ function renderLine(line: CodeLine) {
     return <span>{line.text || '\u00A0'}</span>;
   }
 
-  const parts: JSX.Element[] = [];
+  const parts: ReactElement[] = [];
   let cursor = 0;
 
   const sorted = [...line.highlights].sort((a, b) => a.start - b.start);

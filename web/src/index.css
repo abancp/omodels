@@ -1446,3 +1446,100 @@ input:focus-visible {
   outline: 1px solid var(--c-primary);
   outline-offset: 1px;
 }
+
+/* ═══════════════════════════════════════
+   CONFIRM DIALOG
+   ═══════════════════════════════════════ */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  animation: confirm-fade-in 0.15s ease-out;
+}
+
+@keyframes confirm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.confirm-dialog {
+  background: var(--c-surface-container);
+  border: 0.5px solid var(--c-panel-border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  max-width: 360px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: confirm-slide-in 0.15s ease-out;
+}
+
+@keyframes confirm-slide-in {
+  from { transform: translateY(-8px) scale(0.97); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.confirm-dialog__title {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-on-surface);
+  margin: 0 0 8px 0;
+}
+
+.confirm-dialog__message {
+  font-size: 12px;
+  color: var(--c-on-surface-variant);
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-dialog__btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.confirm-dialog__btn--cancel {
+  background: transparent;
+  border: 0.5px solid var(--c-panel-border);
+  color: var(--c-on-surface-variant);
+}
+
+.confirm-dialog__btn--cancel:hover {
+  color: var(--c-on-surface);
+  border-color: var(--c-panel-border-hover);
+}
+
+.confirm-dialog__btn--confirm {
+  background: var(--c-primary-container);
+  border: 0.5px solid var(--c-primary);
+  color: var(--c-on-primary-container);
+}
+
+.confirm-dialog__btn--confirm:hover {
+  opacity: 0.85;
+}
+
+.confirm-dialog__btn--danger {
+  background: #e74c3c;
+  border-color: #c0392b;
+  color: #fff;
+}
+
+.confirm-dialog__btn--danger:hover {
+  background: #c0392b;
+}

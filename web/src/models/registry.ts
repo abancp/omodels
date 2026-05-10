@@ -92,6 +92,8 @@ export interface VisualizationProps {
   dataset: string;
   datasetParams: Record<string, unknown>;
   isTraining: boolean;
+  /** Incremented when user clicks Reset — visualizations should clear weights/loss/state */
+  resetVersion: number;
   onTrainingComplete: () => void;
   onMetricsUpdate: (metrics: MetricValue[]) => void;
 }

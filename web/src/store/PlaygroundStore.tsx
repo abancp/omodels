@@ -19,6 +19,8 @@ interface PlaygroundState {
   mode: ParamLevel;
   /** Whether the code panel is visible */
   isCodePanelOpen: boolean;
+  /** Incremented on full reset — visualizations watch this to clear state */
+  resetVersion: number;
 }
 
 interface PlaygroundContextValue extends PlaygroundState {
@@ -59,6 +61,7 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
     return (stored === 'advanced' ? 'advanced' : 'basic') as ParamLevel;
   });
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
+  const [resetVersion, setResetVersion] = useState(0);
 
   /* Load model when activeModelId changes */
   useEffect(() => {
@@ -85,7 +88,11 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
   const stopTraining = useCallback(() => setIsTraining(false), []);
   const resetTraining = useCallback(() => {
     setIsTraining(false);
-    if (model) setLiveMetrics(model.defaultMetrics);
+    if (model) {
+      setLiveMetrics(model.defaultMetrics);
+      setParams(buildDefaults(model.params));
+    }
+    setResetVersion(v => v + 1);
   }, [model]);
   const setMode = useCallback((m: ParamLevel) => {
     setModeRaw(m);
@@ -97,7 +104,7 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
     <PlaygroundContext.Provider
       value={{
         activeModelId, model, params, datasetId, datasetParams,
-        activeCodeTab, isTraining, liveMetrics, mode, isCodePanelOpen,
+        activeCodeTab, isTraining, liveMetrics, mode, isCodePanelOpen, resetVersion,
         setActiveModel, setParam, setDataset, setDatasetParam,
         setActiveCodeTab, startTraining, stopTraining, resetTraining,
         setLiveMetrics, setMode, toggleCodePanel,

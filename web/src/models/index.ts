@@ -16,6 +16,7 @@ export type {
   ToggleParam,
   ChipSelectParam,
   CodeSnippet,
+  CodeLine,
   MetricValue,
   VisualizationProps,
 } from './registry';

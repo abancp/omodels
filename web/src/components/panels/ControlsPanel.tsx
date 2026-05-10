@@ -4,7 +4,9 @@
  * Shows Train/Reset buttons for trainable models.
  */
 
+import { useState } from 'react';
 import Icon from '../common/Icon';
+import ConfirmDialog from '../common/ConfirmDialog';
 import { usePlayground } from '../../store';
 import type { ParamDescriptor } from '../../models';
 
@@ -144,6 +146,7 @@ export default function ControlsPanel() {
     datasetId, setDataset, datasetParams, setDatasetParam,
     isTraining, startTraining, stopTraining, resetTraining,
   } = usePlayground();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   if (!model) return null;
 
@@ -273,7 +276,7 @@ export default function ControlsPanel() {
             </button>
             <button
               className="controls__reset-btn"
-              onClick={resetTraining}
+              onClick={() => setShowResetConfirm(true)}
               disabled={isTraining}
               id="btn-reset"
             >
@@ -287,6 +290,18 @@ export default function ControlsPanel() {
           </button>
         )}
       </div>
+
+      {/* Reset Confirmation Dialog */}
+      <ConfirmDialog
+        open={showResetConfirm}
+        title="Reset Model"
+        message="This will reset all weights, loss history, and parameters to their defaults. Are you sure?"
+        confirmLabel="Reset"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => { setShowResetConfirm(false); resetTraining(); }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </aside>
   );
 }

@@ -53,7 +53,7 @@ function computeMetrics(points: Point[], m: number, b: number): MetricValue[] {
 }
 
 export default function LinearRegressionVisualization({
-  params, dataset, datasetParams, isTraining, onTrainingComplete, onMetricsUpdate,
+  params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
 }: VisualizationProps) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const lossCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -98,6 +98,17 @@ export default function LinearRegressionVisualization({
     setLossHistory([]); setEpochTarget(0);
     setTrained(false); setInferResults([]);
   }, [dataset, numPoints, noise]);
+
+  /* Full reset (triggered by store resetVersion) */
+  useEffect(() => {
+    if (resetVersion === 0) return;
+    setWeights({ m: 0.5, b: 0.5 });
+    setLossHistory([]); setEpochTarget(0);
+    setTrained(false); setInferResults([]);
+    vpRef.current = { xMin: -0.08, xMax: 1.08, yMin: -0.2, yMax: 3.7 };
+    setVpVer(v => v + 1);
+    setHoverPt(null); setEditingEq(false);
+  }, [resetVersion]);
 
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current) return;

@@ -10,7 +10,7 @@ import Icon from '../common/Icon';
 import { usePlayground } from '../../store';
 
 export default function CanvasArea() {
-  const { model, params, datasetId, datasetParams, isTraining, stopTraining, liveMetrics, setLiveMetrics } = usePlayground();
+  const { model, params, datasetId, datasetParams, isTraining, stopTraining, liveMetrics, setLiveMetrics, resetVersion } = usePlayground();
 
   if (!model) {
     return (
@@ -52,6 +52,7 @@ export default function CanvasArea() {
           dataset={datasetId}
           datasetParams={datasetParams}
           isTraining={isTraining}
+          resetVersion={resetVersion}
           onTrainingComplete={stopTraining}
           onMetricsUpdate={setLiveMetrics}
         />
