@@ -262,9 +262,9 @@ export default function ControlsPanel() {
         </section>
       </div>
 
-      {/* Footer — Train/Reset for trainable models, or Explain button */}
-      <div className="controls__footer">
-        {model.trainable ? (
+      {/* Footer — Train/Reset for trainable models */}
+      {model.trainable && (
+        <div className="controls__footer">
           <div className="controls__train-actions">
             <button
               className={`controls__train-btn ${isTraining ? 'controls__train-btn--stop' : ''}`}
@@ -283,13 +283,8 @@ export default function ControlsPanel() {
               <Icon name="refresh" size={14} />
             </button>
           </div>
-        ) : (
-          <button className="controls__explain-btn" id="btn-explain">
-            <Icon name="auto_awesome" size={14} />
-            <span>Explain this</span>
-          </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Reset Confirmation Dialog */}
       <ConfirmDialog
