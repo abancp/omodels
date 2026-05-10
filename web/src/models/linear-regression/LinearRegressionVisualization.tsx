@@ -121,8 +121,9 @@ export default function LinearRegressionVisualization({
     setPoints(prev => [...prev, { x: px, y: py }]);
   }, []);
 
-  /* Viewport: wheel zoom */
+  /* Viewport: wheel zoom — requires Ctrl */
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.ctrlKey) return; // let normal scroll pass through
     e.preventDefault();
     const vp = vpRef.current;
     const factor = e.deltaY > 0 ? 1.12 : 0.88;
@@ -138,8 +139,9 @@ export default function LinearRegressionVisualization({
     setVpVer(v => v + 1);
   }, []);
 
-  /* Viewport: drag pan */
+  /* Viewport: drag pan — requires Ctrl held */
   const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
+    if (!e.ctrlKey) return; // only pan when Ctrl is held
     if (dataset === 'custom') return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } };
   }, [dataset]);
@@ -158,7 +160,7 @@ export default function LinearRegressionVisualization({
       if (d < minD) { minD = d; nearest = { x: p.x, y: p.y, px: e.clientX - rect.left, py: e.clientY - rect.top }; }
     }
     setHoverPt(nearest);
-    // Drag
+    // Drag (only when Ctrl was held at mousedown)
     const dr = dragRef.current;
     if (!dr) return;
     const dx = ((e.clientX - dr.sx) / rect.width) * (dr.vp.xMax - dr.vp.xMin);

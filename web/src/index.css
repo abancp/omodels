@@ -86,6 +86,7 @@ body {
   height: calc(100vh - 40px);
   width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .workspace__main {
@@ -94,6 +95,30 @@ body {
   flex-direction: column;
   min-width: 0;
   background: var(--c-surface);
+}
+
+/* ─── Panel Slot Wrappers (resizable + minimizable) ─── */
+.panel-slot {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  transition: width 0.15s ease;
+}
+
+.panel-slot--minimized {
+  overflow: hidden;
+}
+
+.panel-slot--minimized .sidenav__header,
+.panel-slot--minimized .sidenav__nav,
+.panel-slot--minimized .sidenav__footer,
+.panel-slot--minimized .controls__body,
+.panel-slot--minimized .controls__footer,
+.panel-slot--minimized .controls__header {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
 }
 
 /* ═══════════════════════════════════════
@@ -214,7 +239,7 @@ body {
    SIDE NAV BAR
    ═══════════════════════════════════════ */
 .sidenav {
-  width: 200px;
+  width: 100%;
   height: 100%;
   background: var(--c-surface-container-low);
   border-right: 0.5px solid var(--c-panel-border);
@@ -1052,7 +1077,7 @@ body {
    CONTROLS PANEL
    ═══════════════════════════════════════ */
 .controls {
-  width: 240px;
+  width: 100%;
   height: 100%;
   background: var(--c-surface-container);
   border-left: 0.5px solid var(--c-panel-border);
@@ -1542,4 +1567,84 @@ input:focus-visible {
 
 .confirm-dialog__btn--danger:hover {
   background: #c0392b;
+}
+
+/* ═══════════════════════════════════════
+   RESIZE HANDLES
+   ═══════════════════════════════════════ */
+.resize-handle--vertical {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 50;
+  transition: background-color 0.15s;
+}
+
+.resize-handle--vertical:hover,
+.resize-handle--vertical:active {
+  background: var(--c-primary);
+  opacity: 0.5;
+}
+
+.resize-handle--vertical::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background: var(--c-panel-border);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.resize-handle--vertical:hover::after {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════
+   PANEL MINIMIZE BUTTONS
+   ═══════════════════════════════════════ */
+.panel-minimize-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-surface-container);
+  border: 0.5px solid var(--c-panel-border);
+  border-radius: 0 4px 4px 0;
+  color: var(--c-on-surface-variant);
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 55;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.sidenav:hover .panel-minimize-btn,
+.controls:hover .panel-minimize-btn,
+.panel-minimize-btn:hover {
+  opacity: 1;
+}
+
+.panel-minimize-btn:hover {
+  color: var(--c-on-surface);
+}
+
+.panel-minimize-btn--side {
+  right: -16px;
+}
+
+.panel-minimize-btn--ctrl {
+  left: -16px;
+  border-radius: 4px 0 0 4px;
 }

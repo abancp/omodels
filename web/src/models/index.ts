@@ -1,5 +1,7 @@
 export { registerKNN } from './knn/descriptor';
 export { registerLinearRegression } from './linear-regression/descriptor';
+export { registerPolynomialRegression } from './polynomial-regression/descriptor';
+export { registerLogisticRegression } from './logistic-regression/descriptor';
 export {
   registerModel,
   getModel,

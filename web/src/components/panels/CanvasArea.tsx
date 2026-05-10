@@ -6,7 +6,6 @@
  * Floating info chip (top-left) and zoom controls (top-right) overlay the viz.
  */
 
-import Icon from '../common/Icon';
 import { usePlayground } from '../../store';
 
 export default function CanvasArea() {
@@ -24,24 +23,13 @@ export default function CanvasArea() {
 
   return (
     <div className="canvas" id="canvas-area">
-      {/* Top overlay */}
+      {/* Top overlay — info chip only */}
       <div className="canvas__top-overlay">
         <div className="canvas__info-chip">
           <span className="canvas__dot" />
           <span className="canvas__info-model">{model.shortName}</span>
           <span className="canvas__info-sep">·</span>
           <span className="canvas__info-detail">{model.vizLabel}</span>
-        </div>
-        <div className="canvas__zoom-controls">
-          <button className="canvas__zoom-btn" title="Zoom in" id="btn-zoom-in">
-            <Icon name="zoom_in" size={14} />
-          </button>
-          <button className="canvas__zoom-btn" title="Zoom out" id="btn-zoom-out">
-            <Icon name="zoom_out" size={14} />
-          </button>
-          <button className="canvas__zoom-btn" title="Reset view" id="btn-reset-view">
-            <Icon name="center_focus_strong" size={14} />
-          </button>
         </div>
       </div>
 
