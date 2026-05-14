@@ -7,8 +7,8 @@ const descriptor: ModelDescriptor = {
   name: 'Logistic Regression',
   shortName: 'LogReg',
   vizLabel: 'Classification fit',
-  category: 'classical',
-  categoryIcon: 'tune', // Using material icon equivalent or generic
+  category: 'Classification',
+  categoryIcon: 'category', // Using material icon equivalent or generic
   trainable: true,
   params: [
     {

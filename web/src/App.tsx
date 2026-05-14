@@ -1,14 +1,17 @@
 import { ThemeProvider } from './theme';
 import { PlaygroundProvider } from './store';
-import { registerKNN, registerLinearRegression, registerPolynomialRegression, registerLogisticRegression } from './models';
+import { registerKNN, registerLinearRegression, registerPolynomialRegression, registerLogisticRegression, registerSVM, registerNaiveBayes, registerDecisionTree, registerRandomForest } from './models';
 import PlaygroundLayout from './components/PlaygroundLayout';
 
 /* ─── Register all models ─── */
 registerLinearRegression();
 registerPolynomialRegression();
 registerLogisticRegression();
+registerSVM();
 registerKNN();
-// Future: registerSVM(), etc.
+registerNaiveBayes();
+registerDecisionTree();
+registerRandomForest();
 
 export default function App() {
   return (

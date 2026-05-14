@@ -7,8 +7,8 @@ const descriptor: ModelDescriptor = {
   name: 'Linear Regression',
   shortName: 'LinReg',
   vizLabel: 'Regression fit',
-  category: 'Classical ML',
-  categoryIcon: 'settings_input_component',
+  category: 'Regression',
+  categoryIcon: 'show_chart',
   trainable: true,
 
   params: [

@@ -7,8 +7,8 @@ const descriptor: ModelDescriptor = {
   name: 'Polynomial Regression',
   shortName: 'PolyReg',
   vizLabel: 'Polynomial fit',
-  category: 'Classical ML',
-  categoryIcon: 'settings_input_component',
+  category: 'Regression',
+  categoryIcon: 'show_chart',
   trainable: true,
 
   params: [

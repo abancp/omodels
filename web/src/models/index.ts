@@ -2,6 +2,10 @@ export { registerKNN } from './knn/descriptor';
 export { registerLinearRegression } from './linear-regression/descriptor';
 export { registerPolynomialRegression } from './polynomial-regression/descriptor';
 export { registerLogisticRegression } from './logistic-regression/descriptor';
+export { registerSVM } from './svm/descriptor';
+export { registerNaiveBayes } from './naive-bayes/descriptor';
+export { registerDecisionTree } from './decision-tree/descriptor';
+export { registerRandomForest } from './random-forest/descriptor';
 export {
   registerModel,
   getModel,

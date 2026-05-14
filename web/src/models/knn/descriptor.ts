@@ -7,8 +7,8 @@ const knnDescriptor: ModelDescriptor = {
   name: 'K-Nearest Neighbors',
   shortName: 'KNN',
   vizLabel: 'Decision boundary',
-  category: 'Classical ML',
-  categoryIcon: 'settings_input_component',
+  category: 'Classification',
+  categoryIcon: 'category',
 
   params: [
     /* ─── Basic ─── */
