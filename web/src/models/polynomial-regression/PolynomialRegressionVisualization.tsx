@@ -137,13 +137,7 @@ export default function PolynomialRegressionVisualization({
     setVpVer(v => v + 1);
   }, []);
 
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.getElementById('canvas-area')?.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  }, []);
+
 
   /* Training Loop */
   useEffect(() => {
@@ -481,7 +475,16 @@ export default function PolynomialRegressionVisualization({
           <button className="viz-scatter-btn" onClick={resetView} title="Reset view">⟲</button>
           <button className="viz-scatter-btn" onClick={() => zoomBtn(0.8)} title="Zoom In">+</button>
           <button className="viz-scatter-btn" onClick={() => zoomBtn(1.2)} title="Zoom Out">−</button>
-          <button className="viz-scatter-btn" onClick={toggleFullscreen} title="Fullscreen">⛶</button>
+          <button className="viz-scatter-btn" onClick={(e) => {
+            const container = (e.target as HTMLElement).closest('.viz-scroll__section--canvas');
+            if (container) {
+              if (document.fullscreenElement) {
+                document.exitFullscreen();
+              } else {
+                container.requestFullscreen();
+              }
+            }
+          }} title="Full Screen">⛶</button>
         </div>
       </div>
 

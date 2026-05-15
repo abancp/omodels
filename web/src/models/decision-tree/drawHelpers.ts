@@ -1,7 +1,7 @@
 /**
  * Canvas drawing helpers for Decision Tree visualization.
  */
-import { type DecisionTreeState, type Point, predictSingle, predictProbability, layoutTree, type LayoutNode, computeROCCurve } from './math';
+import { type DecisionTreeState, type Point, predictSingle, predictProbability, layoutTree, computeROCCurve } from './math';
 
 /* ─── Draw Decision Boundary + Points ─── */
 export function drawDataCanvas(

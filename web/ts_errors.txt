@@ -1,0 +1,31 @@
+src/models/activations/ActivationsVisualization.tsx(13,68): error TS6133: 'x' is declared but its value is never read.
+src/models/activations/ActivationsVisualization.tsx(14,50): error TS6133: 'x' is declared but its value is never read.
+src/models/activations/descriptor.ts(26,9): error TS2322: Type 'boolean' is not assignable to type 'string'.
+src/models/activations/descriptor.ts(27,9): error TS2322: Type 'boolean' is not assignable to type 'string'.
+src/models/activations/descriptor.ts(35,5): error TS2353: Object literal may only specify known properties, and 'disabled' does not exist in type 'DatasetConfig'.
+src/models/decision-tree/DecisionTreeVisualization.tsx(105,9): error TS6133: 'toggleFullscreen' is declared but its value is never read.
+src/models/decision-tree/drawHelpers.ts(4,98): error TS6133: 'LayoutNode' is declared but its value is never read.
+src/models/gmm/GMMVisualization.tsx(1,52): error TS6133: 'useMemo' is declared but its value is never read.
+src/models/gmm/drawHelpers.ts(1,37): error TS6133: 'predictGMM' is declared but its value is never read.
+src/models/kmeans/drawHelpers.ts(4,72): error TS6133: 'computeElbow' is declared but its value is never read.
+src/models/kmeans/math.ts(134,23): error TS6133: 'i' is declared but its value is never read.
+src/models/linear-regression/LinearRegressionVisualization.tsx(190,9): error TS6133: 'toggleFullscreen' is declared but its value is never read.
+src/models/logistic-regression/LogisticRegressionVisualization.tsx(149,9): error TS6133: 'toggleFullscreen' is declared but its value is never read.
+src/models/mlp/MLPVisualization.tsx(2,35): error TS6196: 'MetricValue' is declared but never used.
+src/models/mlp/MLPVisualization.tsx(212,48): error TS6133: 'vp' is declared but its value is never read.
+src/models/mlp/MLPVisualization.tsx(214,11): error TS6133: 'mx' is declared but its value is never read.
+src/models/mlp/MLPVisualization.tsx(214,42): error TS6133: 'my' is declared but its value is never read.
+src/models/mlp/drawHelpers.ts(16,3): error TS6133: 'dataset' is declared but its value is never read.
+src/models/mlp/drawHelpers.ts(130,9): error TS6133: 'cSurfaceVariant' is declared but its value is never read.
+src/models/naive-bayes/NaiveBayesVisualization.tsx(141,9): error TS6133: 'toggleFullscreen' is declared but its value is never read.
+src/models/perceptron/PerceptronVisualization.tsx(2,35): error TS6196: 'MetricValue' is declared but never used.
+src/models/perceptron/drawHelpers.ts(16,3): error TS6133: 'dataset' is declared but its value is never read.
+src/models/perceptron/drawHelpers.ts(131,9): error TS6133: 'cSurface' is declared but its value is never read.
+src/models/perceptron/drawHelpers.ts(135,9): error TS6133: 'cTertiary' is declared but its value is never read.
+src/models/perceptron/drawHelpers.ts(136,9): error TS6133: 'cOnSurface' is declared but its value is never read.
+src/models/perceptron/drawHelpers.ts(162,85): error TS6133: 'index' is declared but its value is never read.
+src/models/perceptron/math.ts(149,9): error TS2322: Type 'number' is not assignable to type '0.2 | 0.8'.
+src/models/polynomial-regression/PolynomialRegressionVisualization.tsx(140,9): error TS6133: 'toggleFullscreen' is declared but its value is never read.
+src/models/random-forest/math.ts(9,69): error TS6133: 'TreeNode' is declared but its value is never read.
+src/models/random-forest/math.ts(55,48): error TS6133: 'featureIdx' is declared but its value is never read.
+src/models/svm/SVMVisualization.tsx(461,9): error TS6133: 'toggleFullscreen' is declared but its value is never read.

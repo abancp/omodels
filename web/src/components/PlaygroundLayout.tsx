@@ -11,7 +11,6 @@ import { useState, useCallback } from 'react';
 import TopNavBar from './layout/TopNavBar';
 import SideNavBar from './layout/SideNavBar';
 import CanvasArea from './panels/CanvasArea';
-import CodePanel from './panels/CodePanel';
 import ControlsPanel from './panels/ControlsPanel';
 import ResizeHandle from './common/ResizeHandle';
 import Icon from './common/Icon';
@@ -80,10 +79,9 @@ export default function PlaygroundLayout() {
           onDoubleClick={() => { setSideW(SIDE_DEFAULT); setSideMin(false); }}
         />
 
-        {/* Main canvas + code */}
+        {/* Main canvas */}
         <main className="workspace__main">
           <CanvasArea />
-          <CodePanel />
         </main>
 
         <ResizeHandle

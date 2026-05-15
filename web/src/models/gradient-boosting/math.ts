@@ -48,25 +48,30 @@ function seededRandom(seed: number) {
 
 /* ─── Build regression stump (shallow tree) ─── */
 function buildStump(
-  xs: number[], ys: number[], residuals: number[], weights: number[],
+  xs: number[], ys: number[], residuals: number[],
   maxDepth: number, depth: number, numBins: number,
   featureImp: { x: number; y: number }
 ): StumpNode {
   const n = residuals.length;
   if (n === 0) return { isLeaf: true, value: 0, samples: 0 };
 
-  // Weighted mean of residuals (leaf value = sum(residuals) / sum(|prev_prob * (1-prev_prob)|))
-  let sumR = 0, sumW = 0;
-  for (let i = 0; i < n; i++) { sumR += residuals[i]; sumW += weights[i]; }
-  const leafValue = sumW > 0 ? sumR / sumW : 0;
+  // Leaf value = mean of residuals (standard GBM regression tree)
+  let sumR = 0;
+  for (let i = 0; i < n; i++) sumR += residuals[i];
+  const leafValue = sumR / n;
 
   if (depth >= maxDepth || n < 4) {
     return { isLeaf: true, value: leafValue, samples: n };
   }
 
-  // Find best split to minimize squared residuals
-  let bestGain = 0, bestFeature: 'x' | 'y' = 'x', bestThreshold = 0;
+  // Find best split using variance reduction
+  let bestGain = -Infinity, bestFeature: 'x' | 'y' = 'x', bestThreshold = 0;
   let bestLeftIdx: number[] = [], bestRightIdx: number[] = [];
+
+  // Parent variance
+  const parentMean = sumR / n;
+  let parentVar = 0;
+  for (let i = 0; i < n; i++) parentVar += (residuals[i] - parentMean) ** 2;
 
   for (const feature of ['x', 'y'] as const) {
     const vals = feature === 'x' ? xs : ys;
@@ -75,27 +80,25 @@ function buildStump(
     if (sorted.length <= numBins) {
       for (let i = 0; i < sorted.length - 1; i++) thresholds.push((sorted[i] + sorted[i + 1]) / 2);
     } else {
-      for (let i = 1; i < numBins; i++) thresholds.push(sorted[0] + (i / numBins) * (sorted[sorted.length - 1] - sorted[0]));
+      for (let i = 1; i <= numBins; i++) thresholds.push(sorted[0] + (i / (numBins + 1)) * (sorted[sorted.length - 1] - sorted[0]));
     }
 
     for (const th of thresholds) {
       const leftIdx: number[] = [], rightIdx: number[] = [];
       for (let i = 0; i < n; i++) { (vals[i] <= th ? leftIdx : rightIdx).push(i); }
-      if (leftIdx.length < 2 || rightIdx.length < 2) continue;
+      if (leftIdx.length < 1 || rightIdx.length < 1) continue;
 
-      let lSumR = 0, lSumW = 0, rSumR = 0, rSumW = 0;
-      for (const i of leftIdx) { lSumR += residuals[i]; lSumW += weights[i]; }
-      for (const i of rightIdx) { rSumR += residuals[i]; rSumW += weights[i]; }
+      let lSum = 0, rSum = 0;
+      for (const i of leftIdx) lSum += residuals[i];
+      for (const i of rightIdx) rSum += residuals[i];
+      const lMean = lSum / leftIdx.length;
+      const rMean = rSum / rightIdx.length;
 
-      const lVal = lSumW > 0 ? lSumR / lSumW : 0;
-      const rVal = rSumW > 0 ? rSumR / rSumW : 0;
-
-      // Gain = reduction in sum of squared residuals
-      let parentSSR = 0; for (let i = 0; i < n; i++) parentSSR += (residuals[i] - leafValue) ** 2;
-      let childSSR = 0;
-      for (const i of leftIdx) childSSR += (residuals[i] - lVal) ** 2;
-      for (const i of rightIdx) childSSR += (residuals[i] - rVal) ** 2;
-      const gain = parentSSR - childSSR;
+      // Variance reduction = parentVar - leftVar - rightVar
+      let childVar = 0;
+      for (const i of leftIdx) childVar += (residuals[i] - lMean) ** 2;
+      for (const i of rightIdx) childVar += (residuals[i] - rMean) ** 2;
+      const gain = parentVar - childVar;
 
       if (gain > bestGain) {
         bestGain = gain; bestFeature = feature; bestThreshold = th;
@@ -104,19 +107,19 @@ function buildStump(
     }
   }
 
-  if (bestGain < 1e-10) return { isLeaf: true, value: leafValue, samples: n };
+  if (bestGain <= 1e-12) return { isLeaf: true, value: leafValue, samples: n };
 
   featureImp[bestFeature] += bestGain;
 
   const leftXs = bestLeftIdx.map(i => xs[i]), leftYs = bestLeftIdx.map(i => ys[i]);
-  const leftR = bestLeftIdx.map(i => residuals[i]), leftW = bestLeftIdx.map(i => weights[i]);
+  const leftR = bestLeftIdx.map(i => residuals[i]);
   const rightXs = bestRightIdx.map(i => xs[i]), rightYs = bestRightIdx.map(i => ys[i]);
-  const rightR = bestRightIdx.map(i => residuals[i]), rightW = bestRightIdx.map(i => weights[i]);
+  const rightR = bestRightIdx.map(i => residuals[i]);
 
   return {
     isLeaf: false, value: leafValue, splitFeature: bestFeature, splitValue: bestThreshold, samples: n,
-    left: buildStump(leftXs, leftYs, leftR, leftW, maxDepth, depth + 1, numBins, featureImp),
-    right: buildStump(rightXs, rightYs, rightR, rightW, maxDepth, depth + 1, numBins, featureImp),
+    left: buildStump(leftXs, leftYs, leftR, maxDepth, depth + 1, numBins, featureImp),
+    right: buildStump(rightXs, rightYs, rightR, maxDepth, depth + 1, numBins, featureImp),
   };
 }
 
@@ -154,7 +157,6 @@ export function trainGBM(
     // Compute pseudo-residuals: r_i = y_i - p_i
     const probs = F.map(f => sigmoid(f));
     const residuals = labels.map((y, i) => y - probs[i]);
-    const weights = probs.map(p => Math.max(p * (1 - p), 1e-6)); // Hessian
 
     // Subsample
     let sampleIdx: number[];
@@ -173,10 +175,9 @@ export function trainGBM(
     const sXs = sampleIdx.map(i => points[i].x);
     const sYs = sampleIdx.map(i => points[i].y);
     const sR = sampleIdx.map(i => residuals[i]);
-    const sW = sampleIdx.map(i => weights[i]);
 
     // Fit regression tree to residuals
-    const stump = buildStump(sXs, sYs, sR, sW, maxDepth, 0, numBins, featureImp);
+    const stump = buildStump(sXs, sYs, sR, maxDepth, 0, numBins, featureImp);
     stumps.push(stump);
 
     // Update F

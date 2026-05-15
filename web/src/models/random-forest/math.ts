@@ -6,7 +6,7 @@
 
 import type { MetricValue } from '../registry';
 import { generateClassificationData as generateData } from '../logistic-regression/math';
-import { trainDecisionTree, predictSingle, predictProbability, type TreeNode, type DecisionTreeState } from '../decision-tree/math';
+import { trainDecisionTree, predictSingle, predictProbability, type DecisionTreeState } from '../decision-tree/math';
 
 export interface Point {
   x: number;
@@ -52,7 +52,7 @@ function seededRandom(seed: number) {
 }
 
 /* ─── Feature Subsampling ─── */
-function shouldUseFeature(maxFeatures: string, featureIdx: number, rng: () => number): boolean {
+function shouldUseFeature(maxFeatures: string, _featureIdx: number, rng: () => number): boolean {
   if (maxFeatures === 'all') return true;
   if (maxFeatures === 'sqrt') {
     // sqrt(2) ≈ 1.41, so ~71% chance per feature

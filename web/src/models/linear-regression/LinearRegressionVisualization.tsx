@@ -141,7 +141,7 @@ export default function LinearRegressionVisualization({
 
   /* Viewport: drag pan — requires Ctrl held */
   const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
-    if (!e.ctrlKey) return; // only pan when Ctrl is held
+     // only pan when Ctrl is held
     if (dataset === 'custom') return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } };
   }, [dataset]);
@@ -170,14 +170,24 @@ export default function LinearRegressionVisualization({
   }, [points]);
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
 
-  const resetViewport = useCallback(() => {
+  const resetView = useCallback(() => {
     vpRef.current = { xMin: -0.08, xMax: 1.08, yMin: -0.2, yMax: 3.7 };
     setVpVer(v => v + 1);
   }, []);
-  const toggleFullscreen = useCallback(() => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else scatterRef.current?.requestFullscreen();
+
+  const zoomBtn = useCallback((f: number) => {
+    const vp = vpRef.current;
+    const mx = (vp.xMin + vp.xMax) / 2;
+    const my = (vp.yMin + vp.yMax) / 2;
+    vpRef.current = {
+      xMin: mx + (vp.xMin - mx) * f,
+      xMax: mx + (vp.xMax - mx) * f,
+      yMin: my + (vp.yMin - my) * f,
+      yMax: my + (vp.yMax - my) * f
+    };
+    setVpVer(v => v + 1);
   }, []);
+
 
   const pushMetrics = useCallback((m: number, b: number) => {
     onMetricsUpdate(computeMetrics(points, m, b));
@@ -552,18 +562,19 @@ export default function LinearRegressionVisualization({
         )}
         {/* Scatter controls overlay */}
         <div className="viz-scatter-ctrls">
-          <button className="viz-scatter-btn" onClick={resetViewport} title="Reset view">⟲</button>
-          <button className="viz-scatter-btn" onClick={() => {
-            const vp = vpRef.current; const cx = (vp.xMin+vp.xMax)/2, cy = (vp.yMin+vp.yMax)/2;
-            vpRef.current = { xMin: cx+(vp.xMin-cx)*0.8, xMax: cx+(vp.xMax-cx)*0.8, yMin: cy+(vp.yMin-cy)*0.8, yMax: cy+(vp.yMax-cy)*0.8 };
-            setVpVer(v=>v+1);
-          }} title="Zoom in">+</button>
-          <button className="viz-scatter-btn" onClick={() => {
-            const vp = vpRef.current; const cx = (vp.xMin+vp.xMax)/2, cy = (vp.yMin+vp.yMax)/2;
-            vpRef.current = { xMin: cx+(vp.xMin-cx)*1.25, xMax: cx+(vp.xMax-cx)*1.25, yMin: cy+(vp.yMin-cy)*1.25, yMax: cy+(vp.yMax-cy)*1.25 };
-            setVpVer(v=>v+1);
-          }} title="Zoom out">−</button>
-          <button className="viz-scatter-btn" onClick={toggleFullscreen} title="Fullscreen">⛶</button>
+          <button className="viz-scatter-btn" onClick={resetView} title="Reset view">⟲</button>
+          <button className="viz-scatter-btn" onClick={() => zoomBtn(0.8)} title="Zoom In">+</button>
+          <button className="viz-scatter-btn" onClick={() => zoomBtn(1.2)} title="Zoom Out">−</button>
+          <button className="viz-scatter-btn" onClick={(e) => {
+            const container = (e.target as HTMLElement).closest('.viz-scroll__section--canvas');
+            if (container) {
+              if (document.fullscreenElement) {
+                document.exitFullscreen();
+              } else {
+                container.requestFullscreen();
+              }
+            }
+          }} title="Full Screen">⛶</button>
         </div>
       </div>
 
