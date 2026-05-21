@@ -13,7 +13,8 @@ export default function DecisionTreeVisualization({
   const rocCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [points, setPoints] = usePersistentState<Point[]>('omodels-decision-tree-points', []);
-  const [dtState, setDtState] = useState<DecisionTreeState | null>(null);
+  const [dtState, setDtState] = usePersistentState<DecisionTreeState | null>('omodels-decision-tree-dtState', null);
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
 
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
   const [vpVer, setVpVer] = useState(0);
@@ -65,6 +66,17 @@ export default function DecisionTreeVisualization({
   }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise };
+      if (points && points.length > 0) return;
+    }
+    const changed = 
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise;
+    prevParamsRef.current = { dataset, numPoints, noise };
+    if (!changed) return;
+
     if (dataset === 'custom' || dataset === 'import') return;
     setPoints(generateClassificationData(dataset, numPoints, noise));
     setDtState(null); setInferResults([]);

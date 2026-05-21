@@ -12,9 +12,10 @@ export default function PolynomialRegressionVisualization({
   
   // State
   const [points, setPoints] = usePersistentState<Point[]>('omodels-polynomial-regression-points', []);
-  const [weights, setWeights] = useState<Weights>([0.5, 0.5, 0]); // Init with degree 2
-  const [lossHistory, setLossHistory] = useState<number[]>([]);
+  const [weights, setWeights] = usePersistentState<Weights>('omodels-polynomial-regression-weights', [0.5, 0.5, 0]); // Init with degree 2
+  const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-polynomial-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-polynomial-regression-epochTarget', 0);
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; degree: number } | null>(null);
 
   // Real-time backpropagation tracker states
   const [slowMode, setSlowMode] = useState(false);
@@ -130,6 +131,18 @@ export default function PolynomialRegressionVisualization({
 
   /* Generate dataset */
   useEffect(() => {
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise, degree };
+      if (points && points.length > 0) return;
+    }
+    const changed = 
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise ||
+      prevParamsRef.current.degree !== degree;
+    prevParamsRef.current = { dataset, numPoints, noise, degree };
+    if (!changed) return;
+
     if (dataset === 'custom' || dataset === 'import') return;
     const pts = generatePolyData(dataset, numPoints, noise);
     setPoints(pts);

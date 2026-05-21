@@ -4,7 +4,7 @@
  * Shows Train/Reset buttons for trainable models.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Icon from '../common/Icon';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { usePlayground } from '../../store';
@@ -165,7 +165,7 @@ function ImportScatterPlot({ data, modelType, isMultiInput, importMapping }: Imp
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
-    
+
     // Add buffer
     const xRange = maxX - minX || 1;
     const yRange = maxY - minY || 1;
@@ -225,7 +225,7 @@ function ImportScatterPlot({ data, modelType, isMultiInput, importMapping }: Imp
   }, [validPoints, modelType]);
 
   const xLabel = isMultiInput ? `Feature 0 (${importMapping.features?.[0] || 'F0'})` : importMapping.x;
-  const yLabel = isMultiInput 
+  const yLabel = isMultiInput
     ? (modelType === 'regression' ? `Target (${importMapping.label || 'Y'})` : `Feature 1 (${importMapping.features?.[1] || 'F1'})`)
     : importMapping.y;
 
@@ -361,13 +361,31 @@ export default function ControlsPanel() {
     datasetId, setDataset, datasetParams, setDatasetParam,
     isTraining, startTraining, stopTraining, resetTraining,
     setImportedData, setImportStats, importStats, testData, setTestData, testResults,
+    saveModel, loadModel,
   } = usePlayground();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Import state
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const omFileInputRef = useRef<HTMLInputElement>(null);
   const [showImportPopup, setShowImportPopup] = useState(false);
   const [importResult, setImportResult] = useState<import('../../models/dataEngine').ParseResult | null>(null);
+
+  const handleOMUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        loadModel(text);
+      } catch (err: any) {
+        alert(err.message || 'Failed to load model file.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset file input
+  }, [loadModel]);
   const [importMapping, setImportMapping] = useState<{
     x: string;
     y: string;
@@ -446,7 +464,7 @@ export default function ControlsPanel() {
       cfg.inputCount = numInputs;
       cfg.details = `Maps exactly ${numInputs} features (numeric or encoded) to a ${modelType === 'regression' ? 'continuous target value' : 'discrete label class'}.`;
     }
-    
+
     return cfg;
   }, [activeModelId, params, numInputs]);
 
@@ -484,7 +502,7 @@ export default function ControlsPanel() {
 
   useEffect(() => {
     if (!importResult) return;
-    
+
     let isValid = false;
     let errorMsg: string | undefined = undefined;
     const totalAvailable = availableFeatureCols.length;
@@ -492,7 +510,7 @@ export default function ControlsPanel() {
     if (isMultiInput) {
       const selectedFeatures = (importMapping.features || []).filter(c => c !== importMapping.label);
       const mappedFeaturesCount = selectedFeatures.filter(f => f).length;
-      
+
       if (mappedFeaturesCount < numInputs) {
         errorMsg = `Please map all ${numInputs} input features.`;
       } else if (!importMapping.label) {
@@ -544,7 +562,7 @@ export default function ControlsPanel() {
         if (encoding === 'one-hot') workingData = PlaygroundDataEngine.oneHotEncode(workingData, col).data;
         else if (encoding === 'label') workingData = PlaygroundDataEngine.labelEncode(workingData, col).data;
       }
-      
+
       let pts: any[] = [];
       if (isMultiInput) {
         const featureCols = (importMapping.features || []).filter(f => f !== importMapping.label);
@@ -630,7 +648,7 @@ export default function ControlsPanel() {
       const modelType = PlaygroundDataEngine.getModelDataType(activeModelId, params);
       const validation = PlaygroundDataEngine.validate(result, modelType);
       const mapping = PlaygroundDataEngine.suggestMapping(result, modelType);
-      
+
       // Default features: all numeric columns
       const initialFeatures = result.numericColumns;
 
@@ -647,7 +665,7 @@ export default function ControlsPanel() {
           }
         }
         uniqueCount = seen.size;
-        
+
         if (uniqueCount > 0 && uniqueCount <= 15) {
           defaultEncodings[col] = 'one-hot';
         } else if (uniqueCount > 15) {
@@ -818,7 +836,7 @@ export default function ControlsPanel() {
       setImportedData(pts);
       setTestData([]);
     }
-    
+
     setShowImportPopup(false);
     setImportError(null);
   };
@@ -994,6 +1012,61 @@ export default function ControlsPanel() {
           </section>
         )}
 
+        {/* Model State Save/Load Section */}
+        <section className="controls__section" style={{ borderBottom: '1px solid var(--c-panel-border)', paddingBottom: '12px' }}>
+          <header className="controls__section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: 'var(--c-primary-container, rgba(168, 85, 247, 0.15))',
+                  border: '1px solid var(--c-primary, #cfbcff)',
+                  color: 'var(--c-primary, #cfbcff)',
+                  transition: 'all 0.2s ease',
+                }}
+                onClick={saveModel}
+                title="Save trained model weights and data to a file"
+              >
+                <Icon name="download" size={10} />
+                Save .om
+              </button>
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid var(--c-panel-border, rgba(255,255,255,0.12))',
+                  color: 'var(--c-on-surface-variant, #cbc4d2)',
+                  transition: 'all 0.2s ease',
+                }}
+                onClick={() => omFileInputRef.current?.click()}
+                title="Open model from a saved .om file"
+              >
+                <Icon name="upload" size={10} />
+                Open .om
+              </button>
+            </div>
+          </header>
+          <input
+            type="file"
+            ref={omFileInputRef}
+            style={{ display: 'none' }}
+            accept=".om"
+            onChange={handleOMUpload}
+          />
+        </section>
+
         {/* Dataset Section */}
         <section className="controls__section">
           <header className="controls__section-header">
@@ -1165,7 +1238,7 @@ export default function ControlsPanel() {
             <div style={{ display: 'flex', gap: 24, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
               {/* Left Column - Configuration & Help */}
               <div style={{ flex: '0 0 350px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', paddingRight: '4px' }}>
-                
+
                 {/* Educational model help card */}
                 <div style={{
                   background: 'rgba(207, 188, 255, 0.04)',
@@ -1340,7 +1413,7 @@ export default function ControlsPanel() {
                       Auto-split to Train and Test sets
                     </label>
                   </div>
-                  
+
                   {autoSplit && (
                     <div style={{ paddingLeft: 20 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, opacity: 0.7, marginBottom: 4 }}>
@@ -1502,26 +1575,26 @@ export default function ControlsPanel() {
               </div>
             </div>
 
-          {/* Error & Actions Footer */}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ flex: 1 }}>
-              {importError && (
-                <div style={{ color: '#ff8a80', fontSize: 11, background: 'rgba(255,138,128,0.08)', padding: '6px 12px', borderRadius: 4, display: 'inline-block' }}>
-                  {importError}
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button style={btnS()} onClick={() => setShowImportPopup(false)}>Cancel</button>
-              <button
-                style={{ ...btnS(true), opacity: importValidation?.valid ? 1 : 0.5, cursor: importValidation?.valid ? 'pointer' : 'not-allowed' }}
-                onClick={importValidation?.valid ? handleApplyImport : undefined}
-              >
-                Apply & Import
-              </button>
+            {/* Error & Actions Footer */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ flex: 1 }}>
+                {importError && (
+                  <div style={{ color: '#ff8a80', fontSize: 11, background: 'rgba(255,138,128,0.08)', padding: '6px 12px', borderRadius: 4, display: 'inline-block' }}>
+                    {importError}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button style={btnS()} onClick={() => setShowImportPopup(false)}>Cancel</button>
+                <button
+                  style={{ ...btnS(true), opacity: importValidation?.valid ? 1 : 0.5, cursor: importValidation?.valid ? 'pointer' : 'not-allowed' }}
+                  onClick={importValidation?.valid ? handleApplyImport : undefined}
+                >
+                  Apply & Import
+                </button>
+              </div>
             </div>
           </div>
-        </div>
         </div>
       )}
 

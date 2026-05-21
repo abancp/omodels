@@ -15,9 +15,10 @@ export default function LogisticRegressionVisualization({
   // State
   const [points, setPoints] = usePersistentState<Point[]>('omodels-logistic-regression-points', []);
   const degree = parseInt((params.degree as string) ?? '1', 10);
-  const [weights, setWeights] = useState<Weights>([]); 
-  const [lossHistory, setLossHistory] = useState<number[]>([]);
+  const [weights, setWeights] = usePersistentState<Weights>('omodels-logistic-regression-weights', []); 
+  const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-logistic-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-logistic-regression-epochTarget', 0);
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; degree: number } | null>(null);
 
   // Real-time backpropagation tracker states
   const [slowMode, setSlowMode] = useState(false);
@@ -123,6 +124,18 @@ export default function LogisticRegressionVisualization({
 
   /* Generate dataset */
   useEffect(() => {
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise, degree };
+      if (points && points.length > 0) return;
+    }
+    const changed = 
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise ||
+      prevParamsRef.current.degree !== degree;
+    prevParamsRef.current = { dataset, numPoints, noise, degree };
+    if (!changed) return;
+
     if (dataset === 'custom' || dataset === 'import') return;
     const pts = generateClassificationData(dataset, numPoints, noise);
     setPoints(pts);

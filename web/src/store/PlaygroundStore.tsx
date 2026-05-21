@@ -33,6 +33,10 @@ interface PlaygroundState {
   testResults: Record<string, any> | null;
   /** Incremented when test data changes */
   testVersion: number;
+  /** Incremented when a model is imported from .om file */
+  loadVersion: number;
+  /** Stores target model ID during an intercepted switch */
+  pendingModelSwitchId: string | null;
 }
 
 interface PlaygroundContextValue extends PlaygroundState {
@@ -51,6 +55,10 @@ interface PlaygroundContextValue extends PlaygroundState {
   setImportStats: (stats: { mins: number[]; maxs: number[]; targetMin?: number; targetMax?: number } | null) => void;
   setTestData: (data: any[] | null) => void;
   setTestResults: (results: Record<string, any> | null) => void;
+  setPendingModelSwitchId: (id: string | null) => void;
+  forceSetActiveModel: (id: string) => void;
+  saveModel: () => void;
+  loadModel: (fileContent: string) => void;
 }
 
 export const PlaygroundContext = (() => {
@@ -59,6 +67,27 @@ export const PlaygroundContext = (() => {
   }
   return (globalThis as any).__PLAYGROUND_CONTEXT__ as React.Context<PlaygroundContextValue | null>;
 })();
+
+const checkIfModelTrained = (modelId: string): boolean => {
+  if (localStorage.getItem(`omodels-${modelId}-trained`) === 'true') return true;
+  
+  const stateKeys = [
+    `omodels-${modelId}-kmState`,
+    `omodels-${modelId}-dbState`,
+    `omodels-${modelId}-gmmState`,
+    `omodels-${modelId}-dtState`,
+    `omodels-${modelId}-rfState`,
+    `omodels-${modelId}-gbmState`,
+    `omodels-${modelId}-nbState`,
+  ];
+  for (const key of stateKeys) {
+    const val = localStorage.getItem(key);
+    if (val && val !== 'null' && val !== 'undefined') return true;
+  }
+  
+  return false;
+};
+
 
 function buildDefaults(params: ParamDescriptor[]): Record<string, unknown> {
   const defaults: Record<string, unknown> = {};
@@ -110,6 +139,8 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
   const [testData, setTestDataRaw] = useState<any[] | null>(null);
   const [testResults, setTestResults] = useState<Record<string, any> | null>(null);
   const [testVersion, setTestVersion] = useState(0);
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [pendingModelSwitchId, setPendingModelSwitchId] = useState<string | null>(null);
 
   const isFirstLoad = useRef(true);
 
@@ -152,7 +183,88 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
     return () => clearTimeout(t);
   }, [activeModelId, datasetId, params, datasetParams]);
 
-  const setActiveModel = useCallback((id: string) => setActiveModelIdRaw(id), []);
+  const saveModel = useCallback(() => {
+    const modelKeys: Record<string, string> = {};
+    const prefix = `omodels-${activeModelId}-`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        const val = localStorage.getItem(key);
+        if (val !== null) {
+          modelKeys[key] = val;
+        }
+      }
+    }
+    
+    const payload = {
+      fileExtension: '.om',
+      version: '1.0',
+      activeModelId,
+      datasetId,
+      params,
+      datasetParams,
+      liveMetrics,
+      localState: modelKeys
+    };
+    
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${activeModelId}-model.om`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [activeModelId, datasetId, params, datasetParams, liveMetrics]);
+
+  const loadModel = useCallback((fileContent: string) => {
+    const payload = JSON.parse(fileContent);
+    if (payload.fileExtension !== '.om') {
+      throw new Error('Invalid file format. Must be an .om file.');
+    }
+    
+    // Clear existing localState for the target model
+    const prefix = `omodels-${payload.activeModelId}-`;
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    
+    // Restore localState
+    if (payload.localState) {
+      Object.entries(payload.localState).forEach(([key, val]) => {
+        localStorage.setItem(key, val as string);
+      });
+    }
+    
+    // Set parameters
+    setActiveModelIdRaw(payload.activeModelId);
+    setParams(payload.params);
+    setDatasetId(payload.datasetId);
+    setDatasetParams(payload.datasetParams);
+    setLiveMetrics(payload.liveMetrics);
+    
+    // Increment load version to force remount
+    setLoadVersion(v => v + 1);
+  }, []);
+
+  const forceSetActiveModel = useCallback((id: string) => {
+    setActiveModelIdRaw(id);
+    setPendingModelSwitchId(null);
+  }, []);
+
+  const setActiveModel = useCallback((id: string) => {
+    if (id === activeModelId) return;
+    if (checkIfModelTrained(activeModelId)) {
+      setPendingModelSwitchId(id);
+    } else {
+      setActiveModelIdRaw(id);
+    }
+  }, [activeModelId]);
+
   const setParam = useCallback((key: string, value: unknown) => {
     setParams((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -192,10 +304,12 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
         activeCodeTab, isTraining, liveMetrics, mode, isCodePanelOpen, resetVersion,
         importedData, importVersion, importStats,
         testData, testResults, testVersion,
+        loadVersion, pendingModelSwitchId,
         setActiveModel, setParam, setDataset, setDatasetParam,
         setActiveCodeTab, startTraining, stopTraining, resetTraining,
         setLiveMetrics, setMode, toggleCodePanel, setImportedData, setImportStats,
-        setTestData, setTestResults,
+        setTestData, setTestResults, setPendingModelSwitchId, forceSetActiveModel,
+        saveModel, loadModel
       }}
     >
       {children}

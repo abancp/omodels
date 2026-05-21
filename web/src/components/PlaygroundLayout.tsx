@@ -25,6 +25,7 @@ const CTRL_MIN = 48;
 const CTRL_MAX = 400;
 
 import { type ViewType } from './layout/TopNavBar';
+import { usePlayground } from '../store';
 
 interface PlaygroundLayoutProps {
   activeView: ViewType;
@@ -32,6 +33,25 @@ interface PlaygroundLayoutProps {
 }
 
 export default function PlaygroundLayout({ activeView, onViewChange }: PlaygroundLayoutProps) {
+  const { pendingModelSwitchId, setPendingModelSwitchId, forceSetActiveModel, saveModel } = usePlayground();
+
+  const handleSaveAndSwitch = useCallback(() => {
+    saveModel();
+    if (pendingModelSwitchId) {
+      forceSetActiveModel(pendingModelSwitchId);
+    }
+  }, [saveModel, pendingModelSwitchId, forceSetActiveModel]);
+
+  const handleDontSaveAndSwitch = useCallback(() => {
+    if (pendingModelSwitchId) {
+      forceSetActiveModel(pendingModelSwitchId);
+    }
+  }, [pendingModelSwitchId, forceSetActiveModel]);
+
+  const handleCancelSwitch = useCallback(() => {
+    setPendingModelSwitchId(null);
+  }, [setPendingModelSwitchId]);
+
   const [sideW, setSideW] = useState(SIDE_DEFAULT);
   const [ctrlW, setCtrlW] = useState(CTRL_DEFAULT);
   const [sideMin, setSideMin] = useState(false);
@@ -129,6 +149,37 @@ export default function PlaygroundLayout({ activeView, onViewChange }: Playgroun
         </div>
       </div>
       <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      {pendingModelSwitchId && (
+        <div className="confirm-overlay" onClick={handleCancelSwitch}>
+          <div className="confirm-dialog" onClick={e => e.stopPropagation()} role="alertdialog">
+            <h3 className="confirm-dialog__title">Unsaved Trained Model</h3>
+            <p className="confirm-dialog__message">
+              You are switching models while a model is currently trained. Would you like to save your trained weights and hyperparameters as a .om file before switching?
+            </p>
+            <div className="confirm-dialog__actions">
+              <button className="confirm-dialog__btn confirm-dialog__btn--cancel" onClick={handleCancelSwitch}>
+                Cancel
+              </button>
+              <button 
+                className="confirm-dialog__btn" 
+                style={{ 
+                  background: 'transparent', 
+                  border: '0.5px solid var(--c-panel-border)', 
+                  color: 'var(--c-on-surface-variant)', 
+                  marginLeft: 4, 
+                  marginRight: 4 
+                }} 
+                onClick={handleDontSaveAndSwitch}
+              >
+                Don't Save
+              </button>
+              <button className="confirm-dialog__btn confirm-dialog__btn--confirm" onClick={handleSaveAndSwitch} autoFocus>
+                Save & Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

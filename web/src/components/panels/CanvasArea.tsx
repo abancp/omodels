@@ -9,7 +9,7 @@
 import { usePlayground } from '../../store';
 
 export default function CanvasArea() {
-  const { model, params, datasetId, datasetParams, isTraining, stopTraining, liveMetrics, setLiveMetrics, resetVersion } = usePlayground();
+  const { model, params, datasetId, datasetParams, isTraining, stopTraining, liveMetrics, setLiveMetrics, resetVersion, loadVersion } = usePlayground();
 
   if (!model) {
     return (
@@ -36,6 +36,7 @@ export default function CanvasArea() {
       {/* Visualization — model component handles internal layout */}
       <div className="canvas__visualization">
         <Viz
+          key={`${model.id}-${loadVersion}`}
           params={params}
           dataset={datasetId}
           datasetParams={datasetParams}

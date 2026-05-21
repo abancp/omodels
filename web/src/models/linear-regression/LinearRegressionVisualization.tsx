@@ -63,10 +63,11 @@ export default function LinearRegressionVisualization({
   const scatterRef = useRef<HTMLDivElement>(null);
 
   const [points, setPoints] = usePersistentState<Point[]>('omodels-linear-regression-points', []);
-  const [weights, setWeights] = useState({ m: 0.5, b: 0.5 });
-  const [lossHistory, setLossHistory] = useState<number[]>([]);
+  const [weights, setWeights] = usePersistentState('omodels-linear-regression-weights', { m: 0.5, b: 0.5 });
+  const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-linear-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-linear-regression-epochTarget', 0);
   const [trained, setTrained] = usePersistentState('omodels-linear-regression-trained', false);
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
   
   // Real-time backpropagation tracker states
   const [slowMode, setSlowMode] = useState(false);
@@ -169,6 +170,17 @@ export default function LinearRegressionVisualization({
 
   /* Generate dataset */
   useEffect(() => {
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise };
+      if (points && points.length > 0) return;
+    }
+    const changed = 
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise;
+    prevParamsRef.current = { dataset, numPoints, noise };
+    if (!changed) return;
+
     if (dataset === 'custom' || dataset === 'import') return;
     const pts = generateData(dataset, numPoints, noise);
     setPoints(pts);

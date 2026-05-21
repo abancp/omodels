@@ -34,7 +34,7 @@ export default function PerceptronVisualization({
   const noise = (datasetParams.noise as number) ?? 0.2;
 
   const [points, setPoints] = usePersistentState<Point[]>('omodels-perceptron-points', []);
-  const [percState, setPercState] = useState<PerceptronState>({
+  const [percState, setPercState] = usePersistentState<PerceptronState>('omodels-perceptron-percState', () => ({
     numInputs: inputNodes,
     numPerceptrons: numPerceptrons,
     hiddenWeights: Array.from({ length: numPerceptrons }, () => Array.from({ length: inputNodes }, () => Math.random() - 0.5)),
@@ -48,7 +48,8 @@ export default function PerceptronVisualization({
     maxEpochs: maxEp,
     lossHistory: [],
     converged: false
-  });
+  }));
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; inputNodes: number } | null>(null);
   
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-perceptron-epochTarget', 0);
   const [trained, setTrained] = usePersistentState('omodels-perceptron-trained', false);
@@ -293,6 +294,18 @@ export default function PerceptronVisualization({
   }, [inputNodes, numPerceptrons]);
 
   useEffect(() => { 
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise, inputNodes };
+      if (points && points.length > 0) return;
+    }
+    const changed = 
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise ||
+      prevParamsRef.current.inputNodes !== inputNodes;
+    prevParamsRef.current = { dataset, numPoints, noise, inputNodes };
+    if (!changed) return;
+
     if (dataset === 'custom' || dataset === 'import') {
       if (dataset === 'custom') { setPoints([]); resetState(); }
       return; 
