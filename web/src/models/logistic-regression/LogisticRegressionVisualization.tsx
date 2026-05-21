@@ -1,6 +1,8 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateClassificationData, computeLoss, computeGradients, computeMetrics, predict, formatEquation, computeConfusionMatrix, computeROCCurve, computeDataStats, type Point, type Weights } from './math';
+import { usePlayground } from '../../store';
 
 export default function LogisticRegressionVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -11,11 +13,17 @@ export default function LogisticRegressionVisualization({
 
   
   // State
-  const [points, setPoints] = useState<Point[]>([]);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-logistic-regression-points', []);
   const degree = parseInt((params.degree as string) ?? '1', 10);
   const [weights, setWeights] = useState<Weights>([]); 
   const [lossHistory, setLossHistory] = useState<number[]>([]);
-  const [epochTarget, setEpochTarget] = useState(0);
+  const [epochTarget, setEpochTarget] = usePersistentState('omodels-logistic-regression-epochTarget', 0);
+
+  // Real-time backpropagation tracker states
+  const [slowMode, setSlowMode] = useState(false);
+  const [gradients, setGradients] = useState<number[]>([0, 0, 0]);
+  const [gradHistories, setGradHistories] = useState<number[][]>([[], [], []]);
+  const [weightHistories, setWeightHistories] = useState<number[][]>([[], [], []]);
 
   // Viewport
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
@@ -26,7 +34,7 @@ export default function LogisticRegressionVisualization({
   // Inference
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number, y: number, prob: number, cls: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number, y: number, prob: number, cls: number}[]>('omodels-logistic-regression-inferResults', []);
 
   // Params
   const lr = (params.learningRate as number) ?? 0.1;
@@ -42,6 +50,64 @@ export default function LogisticRegressionVisualization({
   }, [points, threshold, onMetricsUpdate]);
 
   /* Init Weights */
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let tp = 0, tn = 0, fp = 0, fn = 0;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0);
+      const trueClass = p.cls !== undefined ? p.cls : (p.label ?? 0);
+      const prob = predict(x, y, weights);
+      const predClass = prob >= threshold ? 1 : 0;
+
+      if (trueClass === 1 && predClass === 1) tp++;
+      else if (trueClass === 0 && predClass === 0) tn++;
+      else if (trueClass === 0 && predClass === 1) fp++;
+      else fn++;
+      results.predictions.push({ features: [x, y], actual: trueClass, predicted: predClass, confidence: prob });
+    }
+    results.type = 'binary';
+    results.accuracy = (tp + tn) / total;
+    results.precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+    results.recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+    results.f1 = (results.precision + results.recall) > 0 ? 2 * results.precision * results.recall / (results.precision + results.recall) : 0;
+    results.tp = tp; results.tn = tn; results.fp = fp; results.fn = fn;
+    results.confusionMatrix = [[tn, fp], [fn, tp]];
+
+    setTestResults(results);
+  }, [testVersion, testData, weights, threshold]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) — logistic regression is binary only
+    const pts = (importedData as Point[]).map(p => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean training
+    const requiredLen = degree === 1 ? 3 : 6;
+    setWeights(new Array(requiredLen).fill(0));
+    setLossHistory([]); setEpochTarget(0);
+    setInferResults([]);
+    setGradients(new Array(requiredLen).fill(0));
+    setGradHistories(new Array(requiredLen).fill([]));
+    setWeightHistories(new Array(requiredLen).fill([]));
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Handle Degree Change (resize weights) */
   useEffect(() => {
     setWeights(prev => {
       const requiredLen = degree === 1 ? 3 : 6;
@@ -50,16 +116,22 @@ export default function LogisticRegressionVisualization({
       for (let i = 0; i < Math.min(prev.length, requiredLen); i++) next[i] = prev[i];
       return next;
     });
+    setGradients(new Array(degree === 1 ? 3 : 6).fill(0));
+    setGradHistories(new Array(degree === 1 ? 3 : 6).fill([]));
+    setWeightHistories(new Array(degree === 1 ? 3 : 6).fill([]));
   }, [degree]);
 
   /* Generate dataset */
   useEffect(() => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     const pts = generateClassificationData(dataset, numPoints, noise);
     setPoints(pts);
     const requiredLen = degree === 1 ? 3 : 6;
     setWeights(new Array(requiredLen).fill(0));
     setLossHistory([]); setEpochTarget(0);
+    setGradients(new Array(requiredLen).fill(0));
+    setGradHistories(new Array(requiredLen).fill([]));
+    setWeightHistories(new Array(requiredLen).fill([]));
   }, [dataset, numPoints, noise, degree]);
 
   /* Full reset */
@@ -71,6 +143,9 @@ export default function LogisticRegressionVisualization({
     vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
     setVpVer(v => v + 1);
     setHoverPt(null);
+    setGradients(new Array(requiredLen).fill(0));
+    setGradHistories(new Array(requiredLen).fill([]));
+    setWeightHistories(new Array(requiredLen).fill([]));
   }, [resetVersion, degree]);
 
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
@@ -131,9 +206,17 @@ export default function LogisticRegressionVisualization({
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
 
   const resetView = useCallback(() => {
-    vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
+    if (dataset === 'import' && points.length > 1) {
+      const xs = points.map(p => p.x), ys = points.map(p => p.y);
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      const yMin = Math.min(...ys), yMax = Math.max(...ys);
+      const xPad = (xMax - xMin) * 0.15 || 0.1, yPad = (yMax - yMin) * 0.15 || 0.1;
+      vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    } else {
+      vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
+    }
     setVpVer(v => v + 1);
-  }, []);
+  }, [dataset, points]);
 
   const zoomBtn = useCallback((factor: number) => {
     const vp = vpRef.current;
@@ -156,18 +239,28 @@ export default function LogisticRegressionVisualization({
     let w = [...weights];
     let epoch = 0;
     let animId = 0;
+    let timeoutId: any = null;
     const prevLoss = [...lossHistory];
     const totalTarget = prevLoss.length + epochs;
     setEpochTarget(totalTarget);
+    let lastValidW = [...w];
 
     const step = () => {
-      const stepsPerFrame = Math.max(1, Math.floor(epochs / 60));
+      const stepsPerFrame = slowMode ? 1 : Math.max(1, Math.floor(epochs / 60));
+      let diverged = false;
+      let lastGrads = [...w];
       for (let s = 0; s < stepsPerFrame && epoch < epochs; s++, epoch++) {
         const grads = computeGradients(points, w, regularization, regStrength, degree);
+        lastGrads = [...grads];
 
         // Gradient clipping
-        for (let j = 0; j < grads.length; j++) {
-          grads[j] = Math.max(-10.0, Math.min(10.0, grads[j]));
+        let gradNorm = 0;
+        for (let j = 0; j < grads.length; j++) gradNorm += grads[j] * grads[j];
+        gradNorm = Math.sqrt(gradNorm);
+        const maxNorm = 5.0;
+        if (gradNorm > maxNorm) {
+          const scale = maxNorm / gradNorm;
+          for (let j = 0; j < grads.length; j++) grads[j] *= scale;
         }
 
         // Update weights
@@ -175,18 +268,48 @@ export default function LogisticRegressionVisualization({
           w[j] -= lr * grads[j];
         }
 
-        prevLoss.push(computeLoss(points, w, regularization, regStrength, degree));
+        // NaN/Infinity safety
+        if (w.some(v => !isFinite(v))) {
+          w = [...lastValidW];
+          diverged = true;
+          break;
+        }
+        lastValidW = [...w];
+
+        const loss = computeLoss(points, w, regularization, regStrength, degree);
+        prevLoss.push(isFinite(loss) ? loss : prevLoss[prevLoss.length - 1] ?? 0);
       }
       setWeights([...w]);
       setLossHistory([...prevLoss]);
       pushMetrics(w);
 
-      if (epoch < epochs) { animId = requestAnimationFrame(step); }
-      else { onTrainingComplete(); }
+      // Tracker state updates
+      setGradients(lastGrads);
+      setGradHistories(prev => lastGrads.map((g, i) => [...(prev[i] || []), g].slice(-50)));
+      setWeightHistories(prev => w.map((v, i) => [...(prev[i] || []), v].slice(-50)));
+
+      if (diverged || epoch >= epochs) { 
+        onTrainingComplete(); 
+      } else { 
+        if (slowMode) {
+          timeoutId = setTimeout(step, 150);
+        } else {
+          animId = requestAnimationFrame(step);
+        }
+      }
     };
-    animId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(animId);
-  }, [isTraining]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (slowMode) {
+      timeoutId = setTimeout(step, 150);
+    } else {
+      animId = requestAnimationFrame(step);
+    }
+
+    return () => {
+      cancelAnimationFrame(animId);
+      clearTimeout(timeoutId);
+    };
+  }, [isTraining, slowMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { pushMetrics(weights); }, [points, threshold]); // eslint-disable-line
 
@@ -542,6 +665,111 @@ export default function LogisticRegressionVisualization({
                 );
               })}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BACKPROPAGATION TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span className="viz-ctrl__title">BACKPROPAGATION TRACKER</span>
+            <span className="viz-ctrl__subtitle">Real-time gradient descent flow & math equations</span>
+          </div>
+          <button 
+            onClick={() => setSlowMode(!slowMode)}
+            style={{ 
+              padding: '6px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', border: 'none',
+              background: slowMode ? 'var(--c-primary)' : 'var(--c-surface-variant)', 
+              color: slowMode ? '#fff' : 'var(--c-on-surface)' 
+            }}
+          >
+            {slowMode ? '🐢 SLOW TRAINING: ON' : '🐢 SLOW TRAINING: OFF'}
+          </button>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          {/* Mathematical equations breakdown */}
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Logistic Regression Formulation</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Model Prediction: <span style={{ color: '#a855f7' }}>ŷ = σ(w₀ + w₁x₁ + w₂x₂) = 1 / (1 + e⁻ᶻ)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Objective (BCE):   <span style={{ color: '#a855f7' }}>E = -(1/n) · Σ [yᵢ log(ŷᵢ) + (1-yᵢ) log(1-ŷᵢ)]</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Backpropagation (Partial Derivatives via Chain Rule)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Bias Gradient (∂E/∂w₀):   <span style={{ color: 'var(--c-error)' }}>∂E/∂w₀ = (1/n) · Σ (ŷᵢ - yᵢ)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Weight Gradient (∂E/∂wⱼ): <span style={{ color: 'var(--c-error)' }}>∂E/∂wⱼ = (1/n) · Σ (ŷᵢ - yᵢ) · xᵢⱼ</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Parameter Gradient Descent Updates</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Parameter j: <span style={{ color: 'var(--c-primary)' }}>wⱼ ← wⱼ - η · (∂E/∂wⱼ)</span></div>
+          </div>
+
+          {/* Real-time sparklines and stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+            {weights.slice(0, 3).map((w, i) => {
+              const labels = ['Bias Parameter (w₀)', 'Weight 1 (w₁ for x₁)', 'Weight 2 (w₂ for x₂)'];
+              const gradLabels = ['∂E/∂w₀', '∂E/∂w₁', '∂E/∂w₂'];
+              const gradHistory = gradHistories[i] || [];
+              const weightHistory = weightHistories[i] || [];
+              return (
+                <div key={i} style={{ padding: '10px', background: 'var(--c-surface-variant)', border: '1px solid var(--c-panel-border)' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '12px', color: i === 0 ? 'var(--c-tertiary)' : 'var(--c-primary)', marginBottom: '8px' }}>{labels[i]}</div>
+                  
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>Gradient ({gradLabels[i]})</span>
+                      <span style={{ color: 'var(--c-error)', fontFamily: 'monospace' }}>{(gradients[i] || 0).toFixed(4)}</span>
+                    </div>
+                    <div style={{ height: '28px', background: 'rgba(255,255,255,0.03)', overflow: 'hidden', position: 'relative' }}>
+                      {gradHistory.length > 1 ? (
+                        <svg width="100%" height="100%" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
+                          <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" strokeDasharray="2,2" />
+                          <path 
+                            d={gradHistory.map((v, idx) => {
+                              const x = (idx / (gradHistory.length - 1)) * 100;
+                              const max = Math.max(...gradHistory.map(Math.abs), 0.01);
+                              const y = 12 - (v / max) * 12;
+                              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                            }).join(' ')} 
+                            fill="none" stroke="var(--c-error)" strokeWidth="1.5" strokeLinejoin="round" 
+                          />
+                        </svg>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '9px', opacity: 0.3 }}>No history</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>Weight Value</span>
+                      <span style={{ color: 'var(--c-primary)', fontFamily: 'monospace' }}>{w.toFixed(4)}</span>
+                    </div>
+                    <div style={{ height: '28px', background: 'rgba(255,255,255,0.03)', overflow: 'hidden', position: 'relative' }}>
+                      {weightHistory.length > 1 ? (
+                        <svg width="100%" height="100%" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
+                          <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" strokeDasharray="2,2" />
+                          <path 
+                            d={weightHistory.map((v, idx) => {
+                              const x = (idx / (weightHistory.length - 1)) * 100;
+                              const max = Math.max(...weightHistory.map(Math.abs), 1);
+                              const y = 12 - (v / max) * 12;
+                              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                            }).join(' ')} 
+                            fill="none" stroke="var(--c-primary)" strokeWidth="1.5" strokeLinejoin="round" 
+                          />
+                        </svg>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '9px', opacity: 0.3 }}>No history</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

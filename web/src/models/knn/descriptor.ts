@@ -122,6 +122,7 @@ const knnDescriptor: ModelDescriptor = {
       { value: 'moons', label: 'Moons' },
       { value: 'circles', label: 'Circles' },
       { value: 'custom', label: 'Custom', icon: 'upload' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'blobs',
     params: [

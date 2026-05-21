@@ -1,6 +1,8 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
-import { generatePolyData, computeLoss, computeGradients, computeMetrics, predict, formatEquation, type Point, type Weights } from './math';
+import { generatePolyData, computeLoss, computeGradients, computeMetrics, predict, formatEquation, computeNormStats, type Point, type Weights, type NormStats } from './math';
+import { usePlayground } from '../../store';
 
 export default function PolynomialRegressionVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -9,10 +11,16 @@ export default function PolynomialRegressionVisualization({
   const lossCanvasRef = useRef<HTMLCanvasElement>(null);
   
   // State
-  const [points, setPoints] = useState<Point[]>([]);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-polynomial-regression-points', []);
   const [weights, setWeights] = useState<Weights>([0.5, 0.5, 0]); // Init with degree 2
   const [lossHistory, setLossHistory] = useState<number[]>([]);
-  const [epochTarget, setEpochTarget] = useState(0);
+  const [epochTarget, setEpochTarget] = usePersistentState('omodels-polynomial-regression-epochTarget', 0);
+
+  // Real-time backpropagation tracker states
+  const [slowMode, setSlowMode] = useState(false);
+  const [gradients, setGradients] = useState<number[]>([0, 0, 0]);
+  const [gradHistories, setGradHistories] = useState<number[][]>([[], [], []]);
+  const [weightHistories, setWeightHistories] = useState<number[][]>([[], [], []]);
 
   // Viewport
   const vpRef = useRef({ xMin: -0.08, xMax: 1.08, yMin: -0.5, yMax: 4.0 });
@@ -22,7 +30,7 @@ export default function PolynomialRegressionVisualization({
 
   // Inference
   const [inferX, setInferX] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number, y: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number, y: number}[]>('omodels-polynomial-regression-inferResults', []);
 
   // Params
   const degree = (params.degree as number) ?? 2;
@@ -33,17 +41,103 @@ export default function PolynomialRegressionVisualization({
   const numPoints = (datasetParams.points as number) ?? 60;
   const noise = (datasetParams.noise as number) ?? 0.25;
 
+  // Normalization stats — recomputed whenever points change
+  const normStats = useMemo<NormStats | undefined>(() => {
+    if (points.length < 2) return undefined;
+    // Only use normalization for non-trivial data ranges
+    const xs = points.map(p => p.x), ys = points.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const yMin = Math.min(...ys), yMax = Math.max(...ys);
+    // If data is already roughly in [0,1]-[0,4] (generated data), skip normalization
+    if (xMin >= -0.5 && xMax <= 1.5 && yMin >= -1 && yMax <= 5) return undefined;
+    return computeNormStats(points);
+  }, [points]);
+
   const pushMetrics = useCallback((w: Weights) => {
-    onMetricsUpdate(computeMetrics(points, w));
-  }, [points, onMetricsUpdate]);
+    onMetricsUpdate(computeMetrics(points, w, normStats));
+  }, [points, normStats, onMetricsUpdate]);
+
+  const metrics = useMemo(() => {
+    if (points.length < 2) return { r2: 0, mse: 0, mae: 0, rmse: 0 };
+    const yMean = points.reduce((s, p) => s + p.y, 0) / points.length;
+    let ssTot = 0, ssRes = 0, mse = 0, mae = 0;
+    for (const p of points) {
+      const pred = predict(p.x, weights, normStats);
+      const err = p.y - pred;
+      ssRes += err * err;
+      ssTot += (p.y - yMean) ** 2;
+      mse += err * err;
+      mae += Math.abs(err);
+    }
+    mse /= points.length;
+    mae /= points.length;
+    const r2 = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
+    return { r2, mse, mae, rmse: Math.sqrt(mse) };
+  }, [points, weights, normStats]);
+
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let ssTot = 0, ssRes = 0, mse = 0, mae = 0, correctRounded = 0;
+    const yMean = testData.reduce((s, p) => s + (p.y !== undefined ? p.y : (p.label ?? 0)), 0) / total;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.label ?? p.cls ?? 0);
+      const yHat = predict(x, weights, normStats);
+      const err = y - yHat;
+      ssRes += err * err;
+      ssTot += (y - yMean) ** 2;
+      mse += err * err;
+      mae += Math.abs(err);
+      if (Math.round(yHat) === Math.round(y)) correctRounded++;
+      results.predictions.push({ features: [x], actual: y, predicted: yHat });
+    }
+    mse /= total;
+    mae /= total;
+    results.type = 'regression';
+    results.r2 = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
+    results.mse = mse;
+    results.rmse = Math.sqrt(mse);
+    results.mae = mae;
+    results.accuracy = correctRounded / total;
+
+    setTestResults(results);
+  }, [testVersion, testData, weights, normStats]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    setPoints(importedData as any);
+    // Reset model state for clean start
+    setWeights(new Array(degree + 1).fill(0).map((_, i) => i === 0 ? 0.5 : (i === 1 ? 0.5 : 0)));
+    setLossHistory([]); setEpochTarget(0);
+    setInferResults([]);
+    setGradients(new Array(degree + 1).fill(0));
+    setGradHistories(new Array(degree + 1).fill([]));
+    setWeightHistories(new Array(degree + 1).fill([]));
+    // Auto-zoom viewport
+    const xs = importedData.map((p: any) => p.x), ys = importedData.map((p: any) => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Generate dataset */
   useEffect(() => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     const pts = generatePolyData(dataset, numPoints, noise);
     setPoints(pts);
     setWeights(new Array(degree + 1).fill(0).map((_, i) => i === 0 ? 0.5 : (i === 1 ? 0.5 : 0)));
     setLossHistory([]); setEpochTarget(0);
+    setGradients(new Array(degree + 1).fill(0));
+    setGradHistories(new Array(degree + 1).fill([]));
+    setWeightHistories(new Array(degree + 1).fill([]));
   }, [dataset, numPoints, noise, degree]);
 
   /* Handle Degree Change (resize weights) */
@@ -55,6 +149,9 @@ export default function PolynomialRegressionVisualization({
       if (prev.length === 0) next[0] = 0.5; // Ensure bias has a starting value if it was empty
       return next;
     });
+    setGradients(new Array(degree + 1).fill(0));
+    setGradHistories(new Array(degree + 1).fill([]));
+    setWeightHistories(new Array(degree + 1).fill([]));
   }, [degree]);
 
   /* Full reset (triggered by store resetVersion) */
@@ -62,6 +159,9 @@ export default function PolynomialRegressionVisualization({
     if (resetVersion === 0) return;
     setWeights(new Array(degree + 1).fill(0).map((_, i) => i === 0 ? 0.5 : (i === 1 ? 0.5 : 0)));
     setLossHistory([]); setEpochTarget(0);
+    setGradients(new Array(degree + 1).fill(0));
+    setGradHistories(new Array(degree + 1).fill([]));
+    setWeightHistories(new Array(degree + 1).fill([]));
     vpRef.current = { xMin: -0.08, xMax: 1.08, yMin: -0.5, yMax: 4.0 };
     setVpVer(v => v + 1);
     setHoverPt(null);
@@ -98,7 +198,7 @@ export default function PolynomialRegressionVisualization({
   }, []);
 
   const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom') return; // Only block for custom (click-to-add-point mode)
     dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } };
   }, [dataset]);
 
@@ -122,9 +222,18 @@ export default function PolynomialRegressionVisualization({
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
 
   const resetView = useCallback(() => {
-    vpRef.current = { xMin: -0.08, xMax: 1.08, yMin: -0.5, yMax: 4.0 };
+    // For import mode, zoom to fit the data; otherwise use default viewport
+    if (dataset === 'import' && points.length > 1) {
+      const xs = points.map(p => p.x), ys = points.map(p => p.y);
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      const yMin = Math.min(...ys), yMax = Math.max(...ys);
+      const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+      vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    } else {
+      vpRef.current = { xMin: -0.08, xMax: 1.08, yMin: -0.5, yMax: 4.0 };
+    }
     setVpVer(v => v + 1);
-  }, []);
+  }, [dataset, points]);
 
   const zoomBtn = useCallback((factor: number) => {
     const vp = vpRef.current;
@@ -147,32 +256,40 @@ export default function PolynomialRegressionVisualization({
     const lossType = params.lossFunction as string ?? 'mse';
     const regularization = params.regularization as string ?? 'none';
     const regStrength = params.regStrength as number ?? 0.01;
-    const gradClipping = params.gradClipping as boolean ?? true;
+    const ns = normStats; // capture current norm stats
 
     let w = [...weights];
     let epoch = 0;
     let animId = 0;
+    let timeoutId: any = null;
     const prevLoss = [...lossHistory];
     const totalTarget = prevLoss.length + epochs;
     setEpochTarget(totalTarget);
+    let lastValidW = [...w];
 
     const step = () => {
-      const stepsPerFrame = Math.max(1, Math.floor(epochs / 120));
+      const stepsPerFrame = slowMode ? 1 : Math.max(1, Math.floor(epochs / 120));
+      let diverged = false;
+      let lastGrads = [...w];
       for (let s = 0; s < stepsPerFrame && epoch < epochs; s++, epoch++) {
-        const grads = computeGradients(points, w, lossType);
+        const grads = computeGradients(points, w, lossType, ns);
+        lastGrads = [...grads];
 
         // Regularization
         if (regularization === 'l2') {
           for (let j = 1; j <= degree; j++) grads[j] += regStrength * w[j];
         } else if (regularization === 'l1') {
           for (let j = 1; j <= degree; j++) grads[j] += regStrength * Math.sign(w[j]);
-        } // elastic net omitted for brevity in MVP
+        }
 
-        // Gradient clipping
-        if (gradClipping) {
-          for (let j = 0; j <= degree; j++) {
-            grads[j] = Math.max(-5.0, Math.min(5.0, grads[j]));
-          }
+        // Gradient norm clipping
+        let gradNorm = 0;
+        for (let j = 0; j <= degree; j++) gradNorm += grads[j] * grads[j];
+        gradNorm = Math.sqrt(gradNorm);
+        const maxNorm = 5.0;
+        if (gradNorm > maxNorm) {
+          const scale = maxNorm / gradNorm;
+          for (let j = 0; j <= degree; j++) grads[j] *= scale;
         }
 
         // Update weights
@@ -180,18 +297,48 @@ export default function PolynomialRegressionVisualization({
           w[j] -= lr * grads[j];
         }
 
-        prevLoss.push(computeLoss(points, w, lossType));
+        // NaN/Infinity safety
+        if (w.some(v => !isFinite(v))) {
+          w = [...lastValidW];
+          diverged = true;
+          break;
+        }
+        lastValidW = [...w];
+
+        const loss = computeLoss(points, w, lossType, ns);
+        prevLoss.push(isFinite(loss) ? loss : prevLoss[prevLoss.length - 1] ?? 0);
       }
       setWeights([...w]);
       setLossHistory([...prevLoss]);
       pushMetrics(w);
 
-      if (epoch < epochs) { animId = requestAnimationFrame(step); }
-      else { onTrainingComplete(); }
+      // Tracker state updates
+      setGradients(lastGrads);
+      setGradHistories(prev => lastGrads.map((g, i) => [...(prev[i] || []), g].slice(-50)));
+      setWeightHistories(prev => w.map((v, i) => [...(prev[i] || []), v].slice(-50)));
+
+      if (diverged || epoch >= epochs) { 
+        onTrainingComplete(); 
+      } else { 
+        if (slowMode) {
+          timeoutId = setTimeout(step, 150);
+        } else {
+          animId = requestAnimationFrame(step);
+        }
+      }
     };
-    animId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(animId);
-  }, [isTraining]); // eslint-disable-line react-hooks/exhaustive-deps
+    
+    if (slowMode) {
+      timeoutId = setTimeout(step, 150);
+    } else {
+      animId = requestAnimationFrame(step);
+    }
+
+    return () => {
+      cancelAnimationFrame(animId);
+      clearTimeout(timeoutId);
+    };
+  }, [isTraining, slowMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { pushMetrics(weights); }, [points]); // eslint-disable-line
 
@@ -255,7 +402,7 @@ export default function PolynomialRegressionVisualization({
       ctx.beginPath();
       for (const p of points) {
         ctx.moveTo(mapX(p.x), mapY(p.y));
-        ctx.lineTo(mapX(p.x), mapY(predict(p.x, weights)));
+        ctx.lineTo(mapX(p.x), mapY(predict(p.x, weights, normStats)));
       }
       ctx.strokeStyle = residualColor;
       ctx.setLineDash([4, 4]);
@@ -264,16 +411,27 @@ export default function PolynomialRegressionVisualization({
       ctx.setLineDash([]);
     }
 
-    // Polynomial Curve
+    // Polynomial Curve — clamp to viewport to prevent extrapolation artifacts
     const curvePoints = 200;
+    const vpRange = vp.yMax - vp.yMin;
+    const yClampMin = vp.yMin - vpRange * 2;
+    const yClampMax = vp.yMax + vpRange * 2;
     ctx.beginPath();
+    let curveStarted = false;
     for (let i = 0; i <= curvePoints; i++) {
       const x = vp.xMin + (i / curvePoints) * (vp.xMax - vp.xMin);
-      const y = predict(x, weights);
+      let y = predict(x, weights, normStats);
+      // Clamp to prevent polynomial extrapolation from drawing wild lines
+      const clamped = y < yClampMin || y > yClampMax;
+      y = Math.max(yClampMin, Math.min(yClampMax, y));
       const px = mapX(x);
       const py = mapY(y);
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      if (!curveStarted || clamped) {
+        ctx.moveTo(px, py);
+        curveStarted = true;
+      } else {
+        ctx.lineTo(px, py);
+      }
     }
     ctx.strokeStyle = primary;
     ctx.lineWidth = 2;
@@ -314,6 +472,19 @@ export default function PolynomialRegressionVisualization({
       ctx.stroke();
     }
 
+    // Test data points
+    if (testData && testData.length > 0) {
+      for (const p of testData) {
+        const tx = p.x !== undefined ? p.x : (p.features?.[0] ?? 0.5);
+        const ty = p.y !== undefined ? p.y : (p.label ?? 0.5);
+        const sx = mapX(tx), sy = mapY(ty);
+        ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#10b981'; ctx.globalAlpha = 0.6; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
+        ctx.strokeStyle = '#10b98140'; ctx.lineWidth = 0.5; ctx.stroke();
+      }
+    }
+
     // Inference markers
     for (const ir of inferResults) {
       const sx = mapX(ir.x), sy = mapY(ir.y);
@@ -326,7 +497,7 @@ export default function PolynomialRegressionVisualization({
       ctx.beginPath(); ctx.moveTo(4, sy); ctx.lineTo(sx, sy); ctx.stroke();
       ctx.setLineDash([]);
     }
-  }, [points, weights, vpVer, showResiduals, showTrueCurve, dataset, inferResults]);
+  }, [points, weights, vpVer, showResiduals, showTrueCurve, dataset, inferResults, normStats, testData]);
 
   /* Draw Loss Curve (fixed x-axis) */
   useEffect(() => {
@@ -427,7 +598,7 @@ export default function PolynomialRegressionVisualization({
   const handleInfer = useCallback(() => {
     const x = parseFloat(inferX);
     if (isNaN(x)) return;
-    const y = predict(x, weights);
+    const y = predict(x, weights, normStats);
     setInferResults(prev => [{x, y}, ...prev].slice(0, 5));
   }, [inferX, weights]);
 
@@ -558,6 +729,111 @@ export default function PolynomialRegressionVisualization({
         </div>
       </div>
 
+      {/* BACKPROPAGATION TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span className="viz-ctrl__title">BACKPROPAGATION TRACKER</span>
+            <span className="viz-ctrl__subtitle">Real-time gradient descent flow & math equations</span>
+          </div>
+          <button 
+            onClick={() => setSlowMode(!slowMode)}
+            style={{ 
+              padding: '6px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', border: 'none',
+              background: slowMode ? 'var(--c-primary)' : 'var(--c-surface-variant)', 
+              color: slowMode ? '#fff' : 'var(--c-on-surface)' 
+            }}
+          >
+            {slowMode ? '🐢 SLOW TRAINING: ON' : '🐢 SLOW TRAINING: OFF'}
+          </button>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          {/* Mathematical equations breakdown */}
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Polynomial Regression Formulation</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Model Prediction: <span style={{ color: '#a855f7' }}>ŷ = w₀ + w₁x + w₂x² + ... + w_dx^d</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Objective (MSE):  <span style={{ color: '#a855f7' }}>E = (1/n) · Σ (ŷᵢ - yᵢ)²</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Backpropagation (Partial Derivatives via Chain Rule)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Bias Gradient (∂E/∂w₀):   <span style={{ color: 'var(--c-error)' }}>∂E/∂w₀ = (2/n) · Σ (ŷᵢ - yᵢ)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Weight Gradient (∂E/∂wⱼ): <span style={{ color: 'var(--c-error)' }}>∂E/∂wⱼ = (2/n) · Σ (ŷᵢ - yᵢ) · xᵢʲ</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Parameter Gradient Descent Updates</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Parameter j: <span style={{ color: 'var(--c-primary)' }}>wⱼ ← wⱼ - η · (∂E/∂wⱼ)</span></div>
+          </div>
+
+          {/* Real-time sparklines and stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+            {weights.slice(0, 3).map((w, i) => {
+              const labels = ['Bias (w₀)', 'Linear Weight (w₁ for x)', 'Quadratic Weight (w₂ for x²)'];
+              const gradLabels = ['∂E/∂w₀', '∂E/∂w₁', '∂E/∂w₂'];
+              const gradHistory = gradHistories[i] || [];
+              const weightHistory = weightHistories[i] || [];
+              return (
+                <div key={i} style={{ padding: '10px', background: 'var(--c-surface-variant)', border: '1px solid var(--c-panel-border)' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '12px', color: i === 0 ? 'var(--c-tertiary)' : 'var(--c-primary)', marginBottom: '8px' }}>{labels[i]}</div>
+                  
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>Gradient ({gradLabels[i]})</span>
+                      <span style={{ color: 'var(--c-error)', fontFamily: 'monospace' }}>{(gradients[i] || 0).toFixed(4)}</span>
+                    </div>
+                    <div style={{ height: '28px', background: 'rgba(255,255,255,0.03)', overflow: 'hidden', position: 'relative' }}>
+                      {gradHistory.length > 1 ? (
+                        <svg width="100%" height="100%" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
+                          <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" strokeDasharray="2,2" />
+                          <path 
+                            d={gradHistory.map((v, idx) => {
+                              const x = (idx / (gradHistory.length - 1)) * 100;
+                              const max = Math.max(...gradHistory.map(Math.abs), 0.01);
+                              const y = 12 - (v / max) * 12;
+                              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                            }).join(' ')} 
+                            fill="none" stroke="var(--c-error)" strokeWidth="1.5" strokeLinejoin="round" 
+                          />
+                        </svg>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '9px', opacity: 0.3 }}>No history</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>Weight Value</span>
+                      <span style={{ color: 'var(--c-primary)', fontFamily: 'monospace' }}>{w.toFixed(4)}</span>
+                    </div>
+                    <div style={{ height: '28px', background: 'rgba(255,255,255,0.03)', overflow: 'hidden', position: 'relative' }}>
+                      {weightHistory.length > 1 ? (
+                        <svg width="100%" height="100%" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
+                          <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" strokeDasharray="2,2" />
+                          <path 
+                            d={weightHistory.map((v, idx) => {
+                              const x = (idx / (weightHistory.length - 1)) * 100;
+                              const max = Math.max(...weightHistory.map(Math.abs), 1);
+                              const y = 12 - (v / max) * 12;
+                              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                            }).join(' ')} 
+                            fill="none" stroke="var(--c-primary)" strokeWidth="1.5" strokeLinejoin="round" 
+                          />
+                        </svg>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '9px', opacity: 0.3 }}>No history</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* 5. INFERENCE */}
       <div className="viz-scroll__section viz-scroll__section--infer">
         <div className="viz-ctrl__header">
@@ -587,6 +863,36 @@ export default function PolynomialRegressionVisualization({
             ))}
           </div>
         )}
+      </div>
+
+      {/* REGRESSION PERFORMANCE MATRIX */}
+      <div className="viz-scroll__section viz-scroll__section--controls">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">REGRESSION PERFORMANCE MATRIX</span>
+          <span className="viz-ctrl__subtitle">Evaluation metrics for model fit</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', textAlign: 'center', fontSize: '11px', marginTop: '10px' }}>
+          <div style={{ background: 'var(--c-surface-variant)', padding: '12px', borderRadius: '6px', border: '1px solid var(--c-panel-border)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ color: 'var(--c-tertiary)', fontWeight: 'bold', fontSize: '18px' }}>{metrics.r2.toFixed(4)}</div>
+            <div style={{ color: 'var(--c-on-surface-variant)', fontWeight: '600', marginTop: '4px' }}>R² (Accuracy of Fit)</div>
+            <div style={{ fontSize: '9px', color: 'var(--c-on-surface-variant)', opacity: 0.7 }}>Proportion of variance explained</div>
+          </div>
+          <div style={{ background: 'var(--c-surface-variant)', padding: '12px', borderRadius: '6px', border: '1px solid var(--c-panel-border)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ color: 'var(--c-primary)', fontWeight: 'bold', fontSize: '18px' }}>{metrics.mse.toFixed(4)}</div>
+            <div style={{ color: 'var(--c-on-surface-variant)', fontWeight: '600', marginTop: '4px' }}>MSE (Mean Squared Error)</div>
+            <div style={{ fontSize: '9px', color: 'var(--c-on-surface-variant)', opacity: 0.7 }}>Average squared prediction error</div>
+          </div>
+          <div style={{ background: 'var(--c-surface-variant)', padding: '12px', borderRadius: '6px', border: '1px solid var(--c-panel-border)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ color: 'var(--c-primary)', fontWeight: 'bold', fontSize: '18px' }}>{metrics.mae.toFixed(4)}</div>
+            <div style={{ color: 'var(--c-on-surface-variant)', fontWeight: '600', marginTop: '4px' }}>MAE (Mean Absolute Error)</div>
+            <div style={{ fontSize: '9px', color: 'var(--c-on-surface-variant)', opacity: 0.7 }}>Average magnitude of errors</div>
+          </div>
+          <div style={{ background: 'var(--c-surface-variant)', padding: '12px', borderRadius: '6px', border: '1px solid var(--c-panel-border)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ color: 'var(--c-primary)', fontWeight: 'bold', fontSize: '18px' }}>{metrics.rmse.toFixed(4)}</div>
+            <div style={{ color: 'var(--c-on-surface-variant)', fontWeight: '600', marginTop: '4px' }}>RMSE (Root MSE)</div>
+            <div style={{ fontSize: '9px', color: 'var(--c-on-surface-variant)', opacity: 0.7 }}>Standard deviation of residuals</div>
+          </div>
+        </div>
       </div>
 
       {/* 6. DATA STATISTICS */}

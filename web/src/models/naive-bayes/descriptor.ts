@@ -75,6 +75,7 @@ const descriptor: ModelDescriptor = {
       { value: 'xor', label: 'XOR' },
       { value: 'spiral', label: 'Spiral' },
       { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'blobs',
     params: [

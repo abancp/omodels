@@ -1,7 +1,9 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateClassificationData, trainDecisionTree, predictSingle, predictProbability, computeMetrics, computeConfusionMatrix, computeDataStats, getDecisionPath, type Point, type DecisionTreeState } from './math';
 import { drawDataCanvas, drawTreeCanvas, drawROCCanvas } from './drawHelpers';
+import { usePlayground } from '../../store';
 
 export default function DecisionTreeVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -10,7 +12,7 @@ export default function DecisionTreeVisualization({
   const treeCanvasRef = useRef<HTMLCanvasElement>(null);
   const rocCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [points, setPoints] = useState<Point[]>([]);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-decision-tree-points', []);
   const [dtState, setDtState] = useState<DecisionTreeState | null>(null);
 
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
@@ -20,7 +22,7 @@ export default function DecisionTreeVisualization({
 
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number, y: number, prob: number, cls: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{ x: number, y: number, prob: number, cls: number }[]>('omodels-decision-tree-inferResults', []);
 
   const algorithm = (params.algorithm as 'id3' | 'c45' | 'cart') ?? 'cart';
   const maxDepth = (params.maxDepth as number) ?? 5;
@@ -43,8 +45,27 @@ export default function DecisionTreeVisualization({
     }
   }, [points, onMetricsUpdate]);
 
+  // Import from store
+  const { importedData, importVersion } = usePlayground();
   useEffect(() => {
-    if (dataset === 'custom') return;
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) for binary classifiers
+    const pts = (importedData as any[]).map((p: any) => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean start
+    setDtState(null); setInferResults([]);
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset === 'custom' || dataset === 'import') return;
     setPoints(generateClassificationData(dataset, numPoints, noise));
     setDtState(null); setInferResults([]);
   }, [dataset, numPoints, noise]);
@@ -77,7 +98,7 @@ export default function DecisionTreeVisualization({
   }, []);
 
   const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } };
   }, [dataset]);
 
@@ -284,7 +305,47 @@ export default function DecisionTreeVisualization({
         </div>
       )}
 
-      {/* 5. INFERENCE */}
+      {/* 5. DECISION TREE ALGORITHM TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">DECISION TREE ALGORITHM TRACKER</span>
+          <span className="viz-ctrl__subtitle">Mathematical breakdown & Splitting logic</span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            {algorithm === 'cart' && (
+              <>
+                <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Gini Impurity (CART)</div>
+                <div style={{ color: 'var(--c-on-surface)' }}>Impurity: <span style={{ color: '#a855f7' }}>G(S) = 1 - Σ (p_i)²</span></div>
+                <div style={{ color: 'var(--c-on-surface)' }}>Gini Gain: <span style={{ color: 'var(--c-primary)' }}>ΔG = G(S) - [ (N_L / N)G(S_L) + (N_R / N)G(S_R) ]</span></div>
+              </>
+            )}
+            {algorithm === 'id3' && (
+              <>
+                <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Entropy & Information Gain (ID3)</div>
+                <div style={{ color: 'var(--c-on-surface)' }}>Entropy: <span style={{ color: '#a855f7' }}>H(S) = -Σ p_i log₂(p_i)</span></div>
+                <div style={{ color: 'var(--c-on-surface)' }}>Info Gain: <span style={{ color: 'var(--c-primary)' }}>IG = H(S) - [ (N_L / N)H(S_L) + (N_R / N)H(S_R) ]</span></div>
+              </>
+            )}
+            {algorithm === 'c45' && (
+              <>
+                <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Gain Ratio (C4.5)</div>
+                <div style={{ color: 'var(--c-on-surface)' }}>Split Info: <span style={{ color: '#a855f7' }}>SI = - (N_L / N)log₂(N_L / N) - (N_R / N)log₂(N_R / N)</span></div>
+                <div style={{ color: 'var(--c-on-surface)' }}>Gain Ratio: <span style={{ color: 'var(--c-primary)' }}>GR = Info Gain / SI</span></div>
+              </>
+            )}
+
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Splitting Criteria</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Best Split: <span style={{ color: 'var(--c-error)' }}>θ* = argmax (Gain)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Stopping Rules: <span style={{ color: 'var(--c-on-surface-variant)' }}>Depth ≥ {maxDepth}, Samples ≤ {minSamplesSplit}</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. INFERENCE */}
       <div className="viz-scroll__section viz-scroll__section--infer">
         <div className="viz-ctrl__header">
           <span className="viz-ctrl__title">INFERENCE</span>
@@ -347,7 +408,7 @@ export default function DecisionTreeVisualization({
         )}
       </div>
 
-      {/* 6. DATA STATISTICS */}
+      {/* 7. DATA STATISTICS */}
       {stats && (
         <div className="viz-scroll__section viz-scroll__section--stats">
           <div className="viz-ctrl__header"><span className="viz-ctrl__title">DATA STATISTICS</span></div>

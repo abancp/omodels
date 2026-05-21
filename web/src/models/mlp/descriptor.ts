@@ -26,7 +26,8 @@ const descriptor: ModelDescriptor = {
     { type: 'slider', key: 'l3Nodes', label: 'L3 Neurons', min: 1, max: 16, step: 1, defaultValue: 4, formatValue: (v) => String(v), level: 'advanced' },
     { type: 'select', key: 'l3Act', label: 'L3 Activation', options: [{ value: 'relu', label: 'ReLU' }, { value: 'tanh', label: 'Tanh' }, { value: 'sigmoid', label: 'Sigmoid' }, { value: 'linear', label: 'Linear' }], defaultValue: 'relu', level: 'advanced' },
     // Output Layer
-    { type: 'select', key: 'outAct', label: 'Output Activation', options: [{ value: 'sigmoid', label: 'Sigmoid (Binary)' }, { value: 'linear', label: 'Linear (Regression)' }], defaultValue: 'sigmoid', level: 'advanced' },
+    { type: 'slider', key: 'outNodes', label: 'Output Neurons', min: 1, max: 10, step: 1, defaultValue: 1, formatValue: (v) => String(v), level: 'advanced' },
+    { type: 'select', key: 'outAct', label: 'Output Activation', options: [{ value: 'sigmoid', label: 'Sigmoid (Binary)' }, { value: 'linear', label: 'Linear (Regression)' }, { value: 'softmax', label: 'Softmax (Multi-class)' }], defaultValue: 'sigmoid', level: 'advanced' },
   ],
 
   dataset: {
@@ -36,6 +37,7 @@ const descriptor: ModelDescriptor = {
       { value: 'circles', label: 'Circles' },
       { value: 'xor', label: 'XOR' },
       { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'moons',
     params: [

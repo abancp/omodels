@@ -1,6 +1,7 @@
 /**
  * Polynomial Regression Math Engine
  * Pure functions for feature expansion, prediction, loss, and gradients.
+ * Supports internal feature normalization for numerical stability with any data scale.
  */
 
 import type { MetricValue } from '../registry';
@@ -11,6 +12,42 @@ export interface Point {
 }
 
 export type Weights = number[];
+
+/* ─── Feature Normalization ─── */
+export interface NormStats {
+  xMin: number; xMax: number; xRange: number;
+  yMin: number; yMax: number; yRange: number;
+}
+
+/** Compute normalization statistics from raw points */
+export function computeNormStats(points: Point[]): NormStats {
+  if (points.length === 0) return { xMin: 0, xMax: 1, xRange: 1, yMin: 0, yMax: 1, yRange: 1 };
+  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+  for (const p of points) {
+    if (p.x < xMin) xMin = p.x;
+    if (p.x > xMax) xMax = p.x;
+    if (p.y < yMin) yMin = p.y;
+    if (p.y > yMax) yMax = p.y;
+  }
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+  return { xMin, xMax, xRange, yMin, yMax, yRange };
+}
+
+/** Normalize x to [0, 1] */
+export function normalizeX(x: number, ns: NormStats): number {
+  return (x - ns.xMin) / ns.xRange;
+}
+
+/** Normalize y to [0, 1] */
+export function normalizeY(y: number, ns: NormStats): number {
+  return (y - ns.yMin) / ns.yRange;
+}
+
+/** Denormalize y from [0, 1] back to original scale */
+export function denormalizeY(yNorm: number, ns: NormStats): number {
+  return yNorm * ns.yRange + ns.yMin;
+}
 
 /**
  * Generates synthetic dataset for polynomial regression.
@@ -73,29 +110,45 @@ export function expandFeatures(x: number, degree: number): number[] {
 }
 
 /**
- * Predicts y for a given x using the provided weights.
- * weights[0] is the bias (w0), weights[1] is w1*x, weights[2] is w2*x^2, etc.
+ * Predicts y (in NORMALIZED space) for a given NORMALIZED x.
+ * weights are always in normalized space.
  */
-export function predict(x: number, weights: Weights): number {
+export function predictNorm(xNorm: number, weights: Weights): number {
   let y = weights[0];
-  let currentX = x;
+  let currentX = xNorm;
   for (let i = 1; i < weights.length; i++) {
     y += weights[i] * currentX;
-    currentX *= x;
+    currentX *= xNorm;
   }
   return y;
 }
 
 /**
- * Computes the loss over the dataset.
+ * Predicts y (in ORIGINAL space) for a given ORIGINAL x.
+ * Normalizes internally, predicts, then denormalizes.
  */
-export function computeLoss(points: Point[], weights: Weights, lossType: string): number {
+export function predict(x: number, weights: Weights, normStats?: NormStats): number {
+  if (!normStats) {
+    // Fallback: no normalization (for generated data in 0-1 range)
+    return predictNorm(x, weights);
+  }
+  const xNorm = normalizeX(x, normStats);
+  const yNorm = predictNorm(xNorm, weights);
+  return denormalizeY(yNorm, normStats);
+}
+
+/**
+ * Computes the loss over the dataset (in normalized space).
+ */
+export function computeLoss(points: Point[], weights: Weights, lossType: string, normStats?: NormStats): number {
   if (points.length === 0) return 0;
   let totalLoss = 0;
 
   for (const p of points) {
-    const pred = predict(p.x, weights);
-    const err = pred - p.y;
+    const xn = normStats ? normalizeX(p.x, normStats) : p.x;
+    const yn = normStats ? normalizeY(p.y, normStats) : p.y;
+    const pred = predictNorm(xn, weights);
+    const err = pred - yn;
 
     if (lossType === 'mae') {
       totalLoss += Math.abs(err);
@@ -116,18 +169,20 @@ export function computeLoss(points: Point[], weights: Weights, lossType: string)
 }
 
 /**
- * Computes gradients for each weight.
+ * Computes gradients for each weight (in normalized space).
  */
-export function computeGradients(points: Point[], weights: Weights, lossType: string): Weights {
+export function computeGradients(points: Point[], weights: Weights, lossType: string, normStats?: NormStats): Weights {
   const degree = weights.length - 1;
   const grads = new Array(degree + 1).fill(0);
   const n = points.length;
   if (n === 0) return grads;
 
   for (const p of points) {
-    const pred = predict(p.x, weights);
-    const err = pred - p.y;
-    const features = expandFeatures(p.x, degree);
+    const xn = normStats ? normalizeX(p.x, normStats) : p.x;
+    const yn = normStats ? normalizeY(p.y, normStats) : p.y;
+    const pred = predictNorm(xn, weights);
+    const err = pred - yn;
+    const features = expandFeatures(xn, degree);
 
     for (let j = 0; j <= degree; j++) {
       if (lossType === 'mae') {
@@ -179,9 +234,9 @@ export function formatEquation(weights: Weights): string {
 }
 
 /**
- * Computes standard metrics (R², MSE, MAE).
+ * Computes standard metrics (R², MSE, MAE) in ORIGINAL space.
  */
-export function computeMetrics(points: Point[], weights: Weights): MetricValue[] {
+export function computeMetrics(points: Point[], weights: Weights, normStats?: NormStats): MetricValue[] {
   if (points.length < 2) return [
     { label: 'R²', value: '—', isPrimary: true },
     { label: 'MSE', value: '—' },
@@ -194,7 +249,7 @@ export function computeMetrics(points: Point[], weights: Weights): MetricValue[]
   let ssTot = 0, ssRes = 0, mse = 0, mae = 0;
 
   for (const p of points) {
-    const pred = predict(p.x, weights);
+    const pred = predict(p.x, weights, normStats);
     const err = p.y - pred;
     ssRes += err * err;
     ssTot += (p.y - yMean) ** 2;

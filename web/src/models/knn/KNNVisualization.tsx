@@ -1,6 +1,8 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateKNNData, classifyKNN, computeKNNMetrics, computeKNNConfusionMatrix, computeDataStats, type Point } from './math';
+import { usePlayground } from '../../store';
 
 export default function KNNVisualization({
   params, dataset, datasetParams, resetVersion, onMetricsUpdate,
@@ -8,7 +10,7 @@ export default function KNNVisualization({
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   
   // State
-  const [points, setPoints] = useState<Point[]>([]);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-knn-points', []);
 
   // Viewport
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
@@ -19,7 +21,7 @@ export default function KNNVisualization({
   // Inference
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number, y: number, prob: number, cls: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number, y: number, prob: number, cls: number, neighbors?: any[]}[]>('omodels-knn-inferResults', []);
 
   // Params
   const k = (params.k as number) ?? 5;
@@ -37,6 +39,58 @@ export default function KNNVisualization({
   const pushMetrics = useCallback((pts: Point[]) => {
     onMetricsUpdate(computeKNNMetrics(pts, k, metric, weightType, pMinkowski));
   }, [k, metric, weightType, pMinkowski, onMetricsUpdate]);
+
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let tp = 0, tn = 0, fp = 0, fn = 0;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0);
+      const trueClass = p.cls !== undefined ? p.cls : (p.label ?? 0);
+      
+      // Predict class using training points
+      const { cls: predClass, prob } = classifyKNN(x, y, points, k, metric, weightType, pMinkowski);
+
+      if (trueClass === 1 && predClass === 1) tp++;
+      else if (trueClass === 0 && predClass === 0) tn++;
+      else if (trueClass === 0 && predClass === 1) fp++;
+      else fn++;
+      results.predictions.push({ features: [x, y], actual: trueClass, predicted: predClass, confidence: prob });
+    }
+    results.type = 'binary';
+    results.accuracy = (tp + tn) / total;
+    results.precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+    results.recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+    results.f1 = (results.precision + results.recall) > 0 ? 2 * results.precision * results.recall / (results.precision + results.recall) : 0;
+    results.tp = tp; results.tn = tn; results.fp = fp; results.fn = fn;
+    results.confusionMatrix = [[tn, fp], [fn, tp]];
+
+    setTestResults(results);
+  }, [testVersion, testData, points, k, metric, weightType, pMinkowski]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) for binary classifiers
+    const pts = (importedData as any[]).map((p: any) => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean start
+    setInferResults([]);
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Generate dataset */
   useEffect(() => {
@@ -97,7 +151,7 @@ export default function KNNVisualization({
   }, []);
 
   const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } };
   }, [dataset]);
 
@@ -286,8 +340,8 @@ export default function KNNVisualization({
     const x = parseFloat(inferX);
     const y = parseFloat(inferY);
     if (isNaN(x) || isNaN(y)) return;
-    const { cls, prob } = classifyKNN(x, y, points, k, metric, weightType, pMinkowski);
-    setInferResults(prev => [{x, y, prob, cls}, ...prev].slice(0, 5));
+    const { cls, prob, neighbors } = classifyKNN(x, y, points, k, metric, weightType, pMinkowski);
+    setInferResults(prev => [{x, y, prob, cls, neighbors}, ...prev].slice(0, 5));
   }, [inferX, inferY, points, k, metric, weightType, pMinkowski]);
 
   const stats = useMemo(() => computeDataStats(points), [points]);
@@ -363,6 +417,57 @@ export default function KNNVisualization({
               <div style={{ color: 'var(--c-tertiary)', fontWeight: 'bold', fontSize: '14px' }}>{cm.tp}</div><div>TP</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* KNN ALGORITHM TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">KNN ALGORITHM TRACKER</span>
+          <span className="viz-ctrl__subtitle">Mathematical breakdown & Nearest Neighbors calculation flow</span>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          {/* Mathematical equations breakdown */}
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Distance Metric Formulations</div>
+            {metric === 'euclidean' && <div style={{ color: 'var(--c-on-surface)' }}>Euclidean Distance: <span style={{ color: '#a855f7' }}>d(p, q) = √((p₁ - q₁)² + (p₂ - q₂)²)</span></div>}
+            {metric === 'manhattan' && <div style={{ color: 'var(--c-on-surface)' }}>Manhattan Distance: <span style={{ color: '#a855f7' }}>d(p, q) = |p₁ - q₁| + |p₂ - q₂|</span></div>}
+            {metric === 'chebyshev' && <div style={{ color: 'var(--c-on-surface)' }}>Chebyshev Distance: <span style={{ color: '#a855f7' }}>d(p, q) = max(|p₁ - q₁|, |p₂ - q₂|)</span></div>}
+            {metric === 'minkowski' && <div style={{ color: 'var(--c-on-surface)' }}>Minkowski (p={pMinkowski}): <span style={{ color: '#a855f7' }}>d(p, q) = (|p₁ - q₁|ᵖ + |p₂ - q₂|ᵖ)^(1/p)</span></div>}
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Voting Mechanism (k={k})</div>
+            {weightType === 'uniform' && <div style={{ color: 'var(--c-on-surface)' }}>Uniform Weights: <span style={{ color: 'var(--c-error)' }}>Every neighbor vote = 1. Majority class wins.</span></div>}
+            {weightType === 'distance' && <div style={{ color: 'var(--c-on-surface)' }}>Distance Weights: <span style={{ color: 'var(--c-error)' }}>vote = 1 / d(p, q). Class with highest total weight wins.</span></div>}
+          </div>
+
+          {/* Real-time specific inference tracker (if available) */}
+          {inferResults.length > 0 && inferResults[0].neighbors && (
+            <div style={{ background: 'var(--c-surface-variant)', padding: '10px', border: '1px solid var(--c-panel-border)' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', color: 'var(--c-primary)', marginBottom: '8px' }}>
+                Latest Inference: ({inferResults[0].x.toFixed(2)}, {inferResults[0].y.toFixed(2)}) ➝ Class {inferResults[0].cls}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                {inferResults[0].neighbors.map((n: any, idx: number) => {
+                  const weight = weightType === 'distance' ? (n.dist === 0 ? 1000 : 1 / n.dist).toFixed(3) : 1;
+                  return (
+                    <div key={idx} style={{ background: 'rgba(0,0,0,0.2)', padding: '6px', fontSize: '10px', borderLeft: `3px solid ${n.point.cls === 1 ? 'var(--c-tertiary)' : 'var(--c-primary)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Neighbor {idx + 1} (Class {n.point.cls})</span>
+                        <span style={{ fontFamily: 'monospace', color: 'var(--c-error)' }}>d = {n.dist.toFixed(4)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', opacity: 0.7 }}>
+                        <span>Coord: ({n.point.x.toFixed(2)}, {n.point.y.toFixed(2)})</span>
+                        <span>Vote Wt: {weight}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

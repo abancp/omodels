@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;family=JetBrains+Mono:wght@400&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+            font-size: 16px;
+        }
+        /* 0.5px border implementation using box-shadow or linear-gradient for precision */
+        .border-hairline {
+            box-shadow: 0 0 0 0.5px rgba(148, 142, 156, 0.2);
+        }
+        .border-r-hairline {
+            border-right: 0.5px solid rgba(148, 142, 156, 0.2);
+        }
+        .border-b-hairline {
+            border-bottom: 0.5px solid rgba(148, 142, 156, 0.2);
+        }
+        .border-l-hairline {
+            border-left: 0.5px solid rgba(148, 142, 156, 0.2);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f0d13;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #36343a;
+            border-radius: 2px;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#cfbcff",
+                        "on-surface-variant": "#cbc4d2",
+                        "surface-container-lowest": "#0f0d13",
+                        "surface-container-high": "#2b292f",
+                        "inverse-primary": "#6750a4",
+                        "on-primary": "#381e72",
+                        "background": "#141218",
+                        "error-container": "#93000a",
+                        "tertiary-container": "#c9a74d",
+                        "on-secondary": "#342b4b",
+                        "on-secondary-fixed": "#1f1635",
+                        "surface-container-low": "#1d1b20",
+                        "tertiary": "#e7c365",
+                        "on-primary-fixed-variant": "#4f378a",
+                        "inverse-on-surface": "#322f35",
+                        "on-secondary-fixed-variant": "#4b4263",
+                        "tertiary-fixed": "#ffdf93",
+                        "outline": "#948e9c",
+                        "on-primary-container": "#e0d2ff",
+                        "surface-tint": "#cfbcff",
+                        "surface": "#141218",
+                        "on-primary-fixed": "#22005d",
+                        "on-tertiary-container": "#503d00",
+                        "surface-container-highest": "#36343a",
+                        "secondary-fixed": "#e9ddff",
+                        "on-background": "#e6e0e9",
+                        "on-tertiary": "#3e2e00",
+                        "surface-container": "#211f24",
+                        "on-error-container": "#ffdad6",
+                        "surface-variant": "#36343a",
+                        "secondary-container": "#4d4465",
+                        "outline-variant": "#494551",
+                        "on-tertiary-fixed-variant": "#594400",
+                        "on-secondary-container": "#bfb2da",
+                        "inverse-surface": "#e6e0e9",
+                        "surface-dim": "#141218",
+                        "on-error": "#690005",
+                        "surface-bright": "#3b383e",
+                        "secondary": "#cdc0e9",
+                        "tertiary-fixed-dim": "#e7c365",
+                        "secondary-fixed-dim": "#cdc0e9",
+                        "primary-fixed-dim": "#cfbcff",
+                        "primary-fixed": "#e9ddff",
+                        "error": "#ffb4ab",
+                        "on-tertiary-fixed": "#241a00",
+                        "on-surface": "#e6e0e9",
+                        "primary-container": "#6750a4"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "toolbar-height": "40px",
+                        "sidebar-width": "240px",
+                        "element-gap": "4px",
+                        "panel-gap": "1px",
+                        "container-padding": "8px"
+                    },
+                    "fontFamily": {
+                        "body-base": ["Inter"],
+                        "header-title": ["Inter"],
+                        "mono-small": ["JetBrains Mono"],
+                        "mono-code": ["JetBrains Mono"],
+                        "label-uppercase": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-base": ["11px", {"lineHeight": "1.4", "letterSpacing": "0em", "fontWeight": "400"}],
+                        "header-title": ["13px", {"lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "mono-small": ["10px", {"lineHeight": "1", "fontWeight": "400"}],
+                        "mono-code": ["11px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-uppercase": ["10px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface-container-lowest text-on-surface font-body-base text-body-base overflow-hidden">
+<!-- TopNavBar -->
+<header class="fixed top-0 left-0 right-0 z-50 flex justify-between items-center h-toolbar-height px-container-padding w-full bg-surface-container-low border-b border-outline-variant">
+<div class="flex items-center gap-4">
+<span class="font-header-title text-header-title text-primary">omodels Data Studio</span>
+<nav class="flex gap-4 ml-6">
+<a class="text-on-surface-variant hover:bg-surface-container-highest transition-colors cursor-pointer px-2 py-1" href="#">Playground</a>
+<a class="text-on-surface-variant hover:bg-surface-container-highest transition-colors cursor-pointer px-2 py-1" href="#">Builder</a>
+<a class="text-on-surface-variant hover:bg-surface-container-highest transition-colors cursor-pointer px-2 py-1" href="#">Compare</a>
+<a class="text-primary border-b-2 border-primary cursor-pointer px-2 py-1" href="#">Data Studio</a>
+</nav>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center bg-surface-container-highest px-2 py-0.5 rounded border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-[14px]">search</span>
+<input class="bg-transparent border-none outline-none text-mono-code text-on-surface ml-2 w-48 placeholder:text-on-surface-variant" placeholder="Search datasets..." type="text"/>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" data-icon="settings">settings</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" data-icon="notifications">notifications</span>
+<div class="w-6 h-6 rounded-full overflow-hidden border border-outline-variant">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="A professional user profile portrait of a data scientist in a modern, clinical office setting. The lighting is soft and neutral, reflecting a high-performance technological environment. The background is a clean, dark-themed studio with subtle glows from computer monitors, maintaining a focused and utilitarian aesthetic consistent with the omodels brand." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCK_WeQkzOr8bZ93cDUmc_Ixq-PZyBQApN1QVyafv-8WcaCSGVXjNd7U1k-sU19vM1gth-rqUOK6x1uCdWOg69uJ2pd9EcwOpkfK-hL5LLhCzMWDxw9zh2-MikZKpzBedGpf9t9pRumKZH79ur_Hnkf_u-76QF20HUNr4UmHKqZF8DJL5f1YMnqc9-_B-37njV975AWxZXbiA-5XVcCSgdiCupi-utPrgLK8wVDHuvWFKvHcQzwn7Ap309v5ggozmw9Mc_TM2G6gfU"/>
+</div>
+</div>
+</header>
+<div class="flex h-screen pt-toolbar-height overflow-hidden">
+<!-- Left SideNavBar: Dataset Operations -->
+<aside class="fixed left-0 top-toolbar-height flex flex-col h-[calc(100vh-toolbar-height)] w-sidebar-width bg-surface-container-lowest border-r border-outline-variant z-40">
+<div class="p-container-padding border-b border-outline-variant">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-primary" data-icon="database">database</span>
+<span class="font-header-title text-header-title text-on-surface">Dataset Operations</span>
+</div>
+<span class="text-label-uppercase font-label-uppercase text-on-surface-variant opacity-70">Manage workflow</span>
+</div>
+<nav class="flex-1 overflow-y-auto py-2">
+<div class="px-2 py-1 mb-1 mx-2 rounded bg-secondary-container text-on-secondary-container border-l-2 border-primary flex items-center gap-3 cursor-pointer duration-150">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+<span class="font-label-uppercase text-label-uppercase">Import</span>
+</div>
+<div class="px-2 py-1 mb-1 mx-2 rounded text-on-surface-variant hover:bg-surface-container-high flex items-center gap-3 cursor-pointer duration-150">
+<span class="material-symbols-outlined" data-icon="schema">schema</span>
+<span class="font-label-uppercase text-label-uppercase">Schema</span>
+</div>
+<div class="px-2 py-1 mb-1 mx-2 rounded text-on-surface-variant hover:bg-surface-container-high flex items-center gap-3 cursor-pointer duration-150">
+<span class="material-symbols-outlined" data-icon="auto_fix_high">auto_fix_high</span>
+<span class="font-label-uppercase text-label-uppercase">Transform</span>
+</div>
+<div class="px-2 py-1 mb-1 mx-2 rounded text-on-surface-variant hover:bg-surface-container-high flex items-center gap-3 cursor-pointer duration-150">
+<span class="material-symbols-outlined" data-icon="call_split">call_split</span>
+<span class="font-label-uppercase text-label-uppercase">Split</span>
+</div>
+<!-- Transformation Pipeline Section -->
+<div class="mt-6 px-4">
+<div class="flex items-center justify-between mb-2">
+<span class="text-label-uppercase font-label-uppercase text-on-surface-variant">Applied Steps</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer" data-icon="history">history</span>
+</div>
+<div class="space-y-1">
+<div class="bg-surface-container px-2 py-1.5 rounded flex items-center gap-2 border border-outline-variant/30">
+<span class="material-symbols-outlined text-tertiary text-[12px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-mono-small text-mono-small opacity-80 uppercase tracking-wider">Normalize [0,1]</span>
+</div>
+<div class="bg-surface-container px-2 py-1.5 rounded flex items-center gap-2 border border-outline-variant/30">
+<span class="material-symbols-outlined text-tertiary text-[12px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-mono-small text-mono-small opacity-80 uppercase tracking-wider">Drop nulls</span>
+</div>
+<div class="bg-surface-container-high/50 px-2 py-1.5 rounded flex items-center gap-2 border border-dashed border-outline-variant border-hairline">
+<span class="material-symbols-outlined text-on-surface-variant text-[12px]" data-icon="add">add</span>
+<span class="font-mono-small text-mono-small text-on-surface-variant italic">Add operation...</span>
+</div>
+</div>
+</div>
+</nav>
+<div class="mt-auto border-t border-outline-variant p-2">
+<div class="px-2 py-1 rounded text-on-surface-variant hover:bg-surface-container-high flex items-center gap-3 cursor-pointer">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-uppercase text-label-uppercase">Settings</span>
+</div>
+<div class="px-2 py-1 rounded text-on-surface-variant hover:bg-surface-container-high flex items-center gap-3 cursor-pointer">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-label-uppercase text-label-uppercase">Docs</span>
+</div>
+</div>
+</aside>
+<!-- Center: Data Explorer -->
+<main class="ml-sidebar-width mr-sidebar-width flex-1 bg-background overflow-auto relative">
+<!-- Toolbar -->
+<div class="sticky top-0 z-30 h-8 bg-surface-container-low border-b border-outline-variant flex items-center px-4 justify-between">
+<div class="flex items-center gap-4">
+<span class="text-mono-small text-on-surface-variant">ROWS: <span class="text-on-surface">12,402</span></span>
+<span class="text-mono-small text-on-surface-variant">COLUMNS: <span class="text-on-surface">14</span></span>
+</div>
+<div class="flex items-center gap-3">
+<button class="bg-primary text-on-primary px-3 py-0.5 rounded font-label-uppercase text-label-uppercase hover:opacity-90 transition-opacity">Export CSV</button>
+<button class="border border-outline-variant text-on-surface px-3 py-0.5 rounded font-label-uppercase text-label-uppercase hover:bg-surface-container-highest transition-colors">Filter</button>
+</div>
+</div>
+<!-- Tabular View -->
+<table class="w-full text-left border-collapse table-fixed">
+<thead class="sticky top-8 bg-surface-container-low z-20 shadow-sm">
+<tr class="h-16">
+<th class="w-12 border-hairline border-b-hairline border-r-hairline p-2 text-center text-on-surface-variant bg-surface-container-lowest">#</th>
+<!-- Column Header: ID -->
+<th class="w-32 border-hairline border-b-hairline border-r-hairline p-2 group hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between mb-1">
+<span class="font-mono-code text-primary uppercase text-[10px] tracking-widest">id</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[14px]">key</span>
+</div>
+<div class="h-6 flex items-end gap-0.5">
+<div class="bg-outline-variant w-1 h-2"></div>
+<div class="bg-outline-variant w-1 h-3"></div>
+<div class="bg-outline-variant w-1 h-1"></div>
+<div class="bg-outline-variant w-1 h-4"></div>
+<div class="bg-outline-variant w-1 h-2"></div>
+<div class="bg-outline-variant w-1 h-5"></div>
+<div class="bg-outline-variant w-1 h-3"></div>
+<div class="bg-outline-variant w-1 h-2"></div>
+</div>
+</th>
+<!-- Column Header: Age -->
+<th class="w-32 border-hairline border-b-hairline border-r-hairline p-2 group hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between mb-1">
+<span class="font-mono-code text-on-surface uppercase text-[10px] tracking-widest">age</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[14px]">tag</span>
+</div>
+<div class="h-6 flex items-end gap-0.5">
+<div class="bg-primary/40 w-1 h-1"></div>
+<div class="bg-primary/40 w-1 h-2"></div>
+<div class="bg-primary/40 w-1 h-4"></div>
+<div class="bg-primary/40 w-1 h-6"></div>
+<div class="bg-primary/40 w-1 h-5"></div>
+<div class="bg-primary/40 w-1 h-3"></div>
+<div class="bg-primary/40 w-1 h-2"></div>
+<div class="bg-primary/40 w-1 h-1"></div>
+</div>
+</th>
+<!-- Column Header: Income (Selected) -->
+<th class="w-48 border-hairline border-b-2 border-primary border-r-hairline p-2 bg-secondary-container/10 group">
+<div class="flex items-center justify-between mb-1">
+<span class="font-mono-code text-primary uppercase text-[10px] tracking-widest font-bold">income</span>
+<span class="material-symbols-outlined text-primary text-[14px]">attach_money</span>
+</div>
+<div class="h-6 flex items-end gap-0.5">
+<div class="bg-primary w-1 h-1"></div>
+<div class="bg-primary w-1 h-1.5"></div>
+<div class="bg-primary w-1 h-3"></div>
+<div class="bg-primary w-1 h-4.5"></div>
+<div class="bg-primary w-1 h-6"></div>
+<div class="bg-primary w-1 h-4"></div>
+<div class="bg-primary w-1 h-2.5"></div>
+<div class="bg-primary w-1 h-1.5"></div>
+<div class="bg-primary w-1 h-1"></div>
+<div class="bg-primary w-1 h-0.5"></div>
+</div>
+</th>
+<!-- Column Header: Target -->
+<th class="w-32 border-hairline border-b-hairline border-r-hairline p-2 group hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between mb-1">
+<span class="font-mono-code text-on-surface uppercase text-[10px] tracking-widest">target</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[14px]">ads_click</span>
+</div>
+<div class="h-6 flex items-end gap-1.5">
+<div class="bg-tertiary/60 w-5 h-6"></div>
+<div class="bg-tertiary/30 w-5 h-4"></div>
+</div>
+</th>
+<!-- Rest of table spacer -->
+<th class="bg-surface-container-lowest border-b-hairline border-hairline"></th>
+</tr>
+</thead>
+<tbody class="font-mono-code text-mono-code">
+<!-- Data Rows -->
+<tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+<td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">1</td>
+<td class="px-2 border-r border-outline-variant/10 text-primary">#92A0</td>
+<td class="px-2 border-r border-outline-variant/10 text-on-surface">34</td>
+<td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">72,500.00</td>
+<td class="px-2 border-r border-outline-variant/10 text-tertiary">YES</td>
+<td class="px-2"></td>
+</tr>
+<tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+<td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">2</td>
+<td class="px-2 border-r border-outline-variant/10 text-primary">#8F21</td>
+<td class="px-2 border-r border-outline-variant/10 text-on-surface">45</td>
+<td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">112,000.50</td>
+<td class="px-2 border-r border-outline-variant/10 text-tertiary">NO</td>
+<td class="px-2"></td>
+</tr>
+<tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+<td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">3</td>
+<td class="px-2 border-r border-outline-variant/10 text-primary">#44B1</td>
+<td class="px-2 border-r border-outline-variant/10 text-on-surface">22</td>
+<td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">48,200.00</td>
+<td class="px-2 border-r border-outline-variant/10 text-tertiary">NO</td>
+<td class="px-2"></td>
+</tr>
+<tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+<td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">4</td>
+<td class="px-2 border-r border-outline-variant/10 text-primary">#9092</td>
+<td class="px-2 border-r border-outline-variant/10 text-on-surface">29</td>
+<td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">61,400.00</td>
+<td class="px-2 border-r border-outline-variant/10 text-tertiary">YES</td>
+<td class="px-2"></td>
+</tr>
+<!-- Row repetition for density -->
+<tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+<td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">5</td>
+<td class="px-2 border-r border-outline-variant/10 text-primary">#12C8</td>
+<td class="px-2 border-r border-outline-variant/10 text-on-surface">38</td>
+<td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">89,100.25</td>
+<td class="px-2 border-r border-outline-variant/10 text-tertiary">YES</td>
+<td class="px-2"></td>
+</tr>
+<tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+<td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">6</td>
+<td class="px-2 border-r border-outline-variant/10 text-primary">#77A2</td>
+<td class="px-2 border-r border-outline-variant/10 text-on-surface">51</td>
+<td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">154,000.00</td>
+<td class="px-2 border-r border-outline-variant/10 text-tertiary">NO</td>
+<td class="px-2"></td>
+</tr>
+<!-- Empty rows for filling -->
+<script>
+                        for(let i=7; i<=40; i++) {
+                            document.write(`
+                                <tr class="h-6 border-b border-outline-variant/10 hover:bg-white/5 transition-colors cursor-default">
+                                    <td class="text-center border-r border-outline-variant/10 text-on-surface-variant/50 text-[9px]">${i}</td>
+                                    <td class="px-2 border-r border-outline-variant/10 text-primary">#${Math.floor(Math.random()*9000)+1000}</td>
+                                    <td class="px-2 border-r border-outline-variant/10 text-on-surface">${Math.floor(Math.random()*60)+18}</td>
+                                    <td class="px-2 border-r border-outline-variant/10 bg-secondary-container/5 text-primary">${(Math.random()*150000).toFixed(2)}</td>
+                                    <td class="px-2 border-r border-outline-variant/10 text-tertiary">${Math.random() > 0.5 ? 'YES' : 'NO'}</td>
+                                    <td class="px-2"></td>
+                                </tr>
+                            `);
+                        }
+                    </script>
+</tbody>
+</table>
+</main>
+<!-- Right SideNavBar: Inspector -->
+<aside class="fixed right-0 top-toolbar-height flex flex-col h-[calc(100vh-toolbar-height)] w-sidebar-width bg-surface-container-lowest border-l border-outline-variant z-40">
+<div class="p-container-padding border-b border-outline-variant">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-tertiary" data-icon="analytics">analytics</span>
+<span class="font-header-title text-header-title text-on-surface">Inspector</span>
+</div>
+<span class="text-label-uppercase font-label-uppercase text-on-surface-variant opacity-70">Metadata &amp; profiling</span>
+</div>
+<div class="flex border-b border-outline-variant">
+<div class="flex-1 py-2 text-center text-tertiary border-b-2 border-tertiary font-label-uppercase text-label-uppercase cursor-pointer">
+                    Column Details
+                </div>
+<div class="flex-1 py-2 text-center text-on-surface-variant hover:text-on-surface transition-colors font-label-uppercase text-label-uppercase cursor-pointer">
+                    Profiling Stats
+                </div>
+</div>
+<div class="p-4 flex-1 overflow-y-auto">
+<div class="mb-6">
+<div class="flex items-center gap-2 mb-3">
+<span class="font-mono-code text-[14px] text-primary">income</span>
+<span class="text-mono-small bg-primary/10 text-primary px-1 rounded uppercase">float64</span>
+</div>
+<div class="space-y-4">
+<!-- Stat Grid -->
+<div class="grid grid-cols-2 gap-2">
+<div class="bg-surface-container-low p-2 border border-outline-variant/30">
+<span class="text-label-uppercase text-on-surface-variant block mb-1">Missing</span>
+<span class="font-mono-code text-[12px] text-on-surface">0.0%</span>
+</div>
+<div class="bg-surface-container-low p-2 border border-outline-variant/30">
+<span class="text-label-uppercase text-on-surface-variant block mb-1">Unique</span>
+<span class="font-mono-code text-[12px] text-on-surface">11,291</span>
+</div>
+</div>
+<!-- Main Histogram -->
+<div class="bg-surface-container-low p-3 border border-outline-variant/30">
+<span class="text-label-uppercase text-on-surface-variant block mb-3">Value Distribution</span>
+<div class="h-32 flex items-end gap-1 px-1">
+<div class="bg-primary/20 flex-1 h-[10%]"></div>
+<div class="bg-primary/30 flex-1 h-[25%]"></div>
+<div class="bg-primary/40 flex-1 h-[45%]"></div>
+<div class="bg-primary/60 flex-1 h-[75%]"></div>
+<div class="bg-primary flex-1 h-[100%]"></div>
+<div class="bg-primary/80 flex-1 h-[60%]"></div>
+<div class="bg-primary/50 flex-1 h-[40%]"></div>
+<div class="bg-primary/30 flex-1 h-[20%]"></div>
+<div class="bg-primary/15 flex-1 h-[8%]"></div>
+</div>
+<div class="flex justify-between mt-2 font-mono-small text-on-surface-variant">
+<span>24.5k</span>
+<span>182.0k</span>
+</div>
+</div>
+<!-- Detailed Stats -->
+<div class="space-y-1">
+<div class="flex justify-between py-1 border-b border-outline-variant/10">
+<span class="text-on-surface-variant">Mean</span>
+<span class="font-mono-code">84,203.11</span>
+</div>
+<div class="flex justify-between py-1 border-b border-outline-variant/10">
+<span class="text-on-surface-variant">Median</span>
+<span class="font-mono-code">71,400.00</span>
+</div>
+<div class="flex justify-between py-1 border-b border-outline-variant/10">
+<span class="text-on-surface-variant">Std Dev</span>
+<span class="font-mono-code">32,410.55</span>
+</div>
+<div class="flex justify-between py-1 border-b border-outline-variant/10">
+<span class="text-on-surface-variant">Skweness</span>
+<span class="font-mono-code">1.42</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Action Panel -->
+<div class="p-container-padding bg-surface-container border-t border-outline-variant mt-auto">
+<button class="w-full bg-primary-container text-on-primary-container py-2 flex items-center justify-center gap-2 hover:bg-primary-container/80 transition-all rounded active:opacity-80">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+<span class="font-label-uppercase text-label-uppercase">Explain this</span>
+</button>
+</div>
+</aside>
+</div>
+</body></html>

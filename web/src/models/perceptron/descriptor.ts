@@ -15,13 +15,20 @@ const descriptor: ModelDescriptor = {
     { type: 'slider', key: 'inputNodes', label: 'Input Nodes (Features)', min: 2, max: 8, step: 1, defaultValue: 2, formatValue: (v) => String(v) },
     { type: 'slider', key: 'numPerceptrons', label: 'Hidden Neurons (Perceptrons)', min: 1, max: 8, step: 1, defaultValue: 1, formatValue: (v) => String(v) },
     {
-      type: 'select', key: 'activation', label: 'Activation Function', options: [
+      type: 'select', key: 'activation', label: 'Hidden Activation', options: [
         { value: 'step', label: 'Step (Binary)' },
         { value: 'sigmoid', label: 'Sigmoid' },
         { value: 'tanh', label: 'Tanh' },
         { value: 'relu', label: 'ReLU' },
         { value: 'linear', label: 'Linear' },
       ], defaultValue: 'step'
+    },
+    {
+      type: 'select', key: 'outAct', label: 'Output Activation', options: [
+        { value: 'step', label: 'Step (Binary)' },
+        { value: 'sigmoid', label: 'Sigmoid (Binary)' },
+        { value: 'linear', label: 'Linear (Regression)' },
+      ], defaultValue: 'sigmoid'
     },
     { type: 'slider', key: 'learningRate', label: 'Learning Rate (η)', min: 0.01, max: 1.0, step: 0.01, defaultValue: 0.1, formatValue: (v) => v.toFixed(2) },
     { type: 'slider', key: 'maxEpochs', label: 'Max Epochs', min: 10, max: 1000, step: 10, defaultValue: 100, formatValue: (v) => String(v) },
@@ -34,6 +41,7 @@ const descriptor: ModelDescriptor = {
       { value: 'circles', label: 'Circles (Not Separable)' },
       { value: 'uniform', label: 'Uniform' },
       { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'linearly_separable',
     params: [

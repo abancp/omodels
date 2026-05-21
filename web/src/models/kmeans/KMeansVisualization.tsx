@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as R
 import type { VisualizationProps } from '../registry';
 import { generateClusteringData, trainKMeans, predictCluster, computeMetrics, computeDataStats, computeElbow, CLUSTER_COLORS, type Point, type KMeansState } from './math';
 import { drawDataCanvas, drawInertiaCanvas, drawElbowCanvas } from './drawHelpers';
+import { usePlayground } from '../../store';
 
 export default function KMeansVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -19,6 +20,9 @@ export default function KMeansVisualization({
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
   const [inferResults, setInferResults] = useState<{x: number; y: number; cluster: number; dist: number}[]>([]);
+
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
 
   const k = (params.k as number) ?? 3;
   const maxIter = (params.maxIter as number) ?? 50;
@@ -38,8 +42,63 @@ export default function KMeansVisualization({
     ]);
   }, [onMetricsUpdate]);
 
-  useEffect(() => { if (dataset === 'custom') return; setPoints(generateClusteringData(dataset, numPoints, noise)); setKmState(null); setElbowData(null); setInferResults([]); }, [dataset, numPoints, noise]);
-  useEffect(() => { if (resetVersion === 0) return; setKmState(null); setElbowData(null); setInferResults([]); vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, [resetVersion]);
+  // Load custom imported dataset
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    const pts = (importedData as any[]).map((p: any) => ({ x: p.x, y: p.y }));
+    setPoints(pts);
+    setKmState(null);
+    setElbowData(null);
+    setInferResults([]);
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion, importedData, dataset]);
+
+  useEffect(() => {
+    if (dataset === 'custom' || dataset === 'import') return;
+    setPoints(generateClusteringData(dataset, numPoints, noise));
+    setKmState(null);
+    setElbowData(null);
+    setInferResults([]);
+  }, [dataset, numPoints, noise]);
+
+  useEffect(() => {
+    if (resetVersion === 0) return;
+    setKmState(null);
+    setElbowData(null);
+    setInferResults([]);
+    vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
+    setVpVer(v => v + 1);
+  }, [resetVersion]);
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0 || !kmState) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let totalDist = 0;
+    const centroids = kmState.centroids;
+
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0.5);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0.5);
+      
+      const cluster = predictCluster(x, y, centroids);
+      const d = Math.sqrt((x - centroids[cluster].x) ** 2 + (y - centroids[cluster].y) ** 2);
+      totalDist += d;
+      results.predictions.push({ features: [x, y], actual: cluster, predicted: cluster });
+    }
+
+    results.type = 'clustering';
+    results.avgCentroidDist = totalDist / total;
+    results.silhouetteScore = kmState.silhouetteScore;
+    setTestResults(results);
+  }, [testVersion, testData, kmState]);
 
   // Mouse handlers
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dragRef.current) return; const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; setPoints(prev => [...prev, { x: vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin), y: vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin) }]); }, []);
@@ -67,7 +126,7 @@ export default function KMeansVisualization({
   useEffect(() => { pushMetrics(kmState); }, [points]); // eslint-disable-line
 
   // Canvas renders
-  useEffect(() => { const c = dataRef.current; if (!c) return; const r = () => drawDataCanvas(c, points, kmState, vpRef.current, inferResults, dataset, showVoronoi, showCentroidPath); r(); const ro = new ResizeObserver(() => requestAnimationFrame(r)); ro.observe(c); return () => ro.disconnect(); }, [points, kmState, vpVer, inferResults, dataset, showVoronoi, showCentroidPath]);
+  useEffect(() => { const c = dataRef.current; if (!c) return; const r = () => drawDataCanvas(c, points, kmState, vpRef.current, inferResults, dataset, showVoronoi, showCentroidPath, (testData || undefined) as Point[] | undefined); r(); const ro = new ResizeObserver(() => requestAnimationFrame(r)); ro.observe(c); return () => ro.disconnect(); }, [points, kmState, vpVer, inferResults, dataset, showVoronoi, showCentroidPath, testData]);
   useEffect(() => { const c = inertiaRef.current; if (!c) return; const r = () => drawInertiaCanvas(c, kmState); r(); const ro = new ResizeObserver(() => requestAnimationFrame(r)); ro.observe(c); return () => ro.disconnect(); }, [kmState]);
   useEffect(() => { const c = elbowRef.current; if (!c) return; const r = () => drawElbowCanvas(c, elbowData); r(); const ro = new ResizeObserver(() => requestAnimationFrame(r)); ro.observe(c); return () => ro.disconnect(); }, [elbowData]);
 

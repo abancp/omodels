@@ -162,6 +162,54 @@ export function predictProbabilities(px: number, py: number, state: NBState): Re
   return probs;
 }
 
+export function predictDetailed(px: number, py: number, state: NBState): { probs: Record<number, number>, logProbs: Record<number, number> } {
+  const { type, classes, classPrior, theta, var: variance, featureLogProb, binarizeThreshold } = state;
+  const logProbs: Record<number, number> = {};
+
+  if (classes.length === 0) return { probs: {}, logProbs: {} };
+
+  classes.forEach(c => {
+    let lp = classPrior[c] || 0;
+    
+    if (type === 'gaussian') {
+      const [meanX, meanY] = theta![c];
+      const [varX, varY] = variance![c];
+      
+      const lpX = -0.5 * Math.log(2 * Math.PI * varX) - 0.5 * Math.pow(px - meanX, 2) / varX;
+      const lpY = -0.5 * Math.log(2 * Math.PI * varY) - 0.5 * Math.pow(py - meanY, 2) / varY;
+      
+      lp += lpX + lpY;
+    } else if (type === 'multinomial') {
+      const [lpX, lpY] = featureLogProb![c];
+      lp += px * lpX + py * lpY;
+    } else if (type === 'bernoulli') {
+      const [lpX, lpY] = featureLogProb![c];
+      const bx = px > binarizeThreshold! ? 1 : 0;
+      const by = py > binarizeThreshold! ? 1 : 0;
+      
+      const probX = bx === 1 ? lpX : Math.log(1 - Math.exp(lpX) + EPSILON);
+      const probY = by === 1 ? lpY : Math.log(1 - Math.exp(lpY) + EPSILON);
+      
+      lp += probX + probY;
+    }
+    
+    logProbs[c] = lp;
+  });
+
+  const maxLogProb = Math.max(...Object.values(logProbs));
+  let sumExp = 0;
+  classes.forEach(c => {
+    sumExp += Math.exp(logProbs[c] - maxLogProb);
+  });
+  
+  const probs: Record<number, number> = {};
+  classes.forEach(c => {
+    probs[c] = Math.exp(logProbs[c] - maxLogProb) / sumExp;
+  });
+
+  return { probs, logProbs };
+}
+
 export function predict(px: number, py: number, state: NBState): number {
   const probs = predictProbabilities(px, py, state);
   let bestClass = -1;

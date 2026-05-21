@@ -12,7 +12,8 @@ export function drawDataCanvas(
   hoverPt: { x: number; y: number } | null,
   dataset: string,
   showEpsCircles: boolean,
-  showPointTypes: boolean
+  showPointTypes: boolean,
+  testPoints?: Point[]
 ) {
   const ctx = canvas.getContext('2d'); if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -117,6 +118,18 @@ export function drawDataCanvas(
     }
   }
   
+  // Draw test points if present
+  if (testPoints && testPoints.length > 0) {
+    for (const p of testPoints) {
+      const sx = mapX(p.x), sy = mapY(p.y);
+      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#10b981'; ctx.fill();
+      ctx.strokeStyle = '#00000040'; ctx.lineWidth = 0.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#10b98140'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+  }
+
   // Hover effect (shows what the eps neighborhood looks like)
   if (hoverPt && (!state || state.phase === 'DONE')) {
     const epsToUse = state ? state.eps : 0.1;

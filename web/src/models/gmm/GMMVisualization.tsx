@@ -1,22 +1,24 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateClusteringData, type Point, initGMM, gmmStep, predictGMM, computeMetrics, type GMMState } from './math';
 import { drawDataCanvas, drawLikelihoodCanvas, CLUSTER_COLORS } from './drawHelpers';
+import { usePlayground } from '../../store';
 
 export default function GMMVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
 }: VisualizationProps) {
   const dataRef = useRef<HTMLCanvasElement>(null);
   const llRef = useRef<HTMLCanvasElement>(null);
-  const [points, setPoints] = useState<Point[]>([]);
-  const [gmmState, setGmmState] = useState<GMMState | null>(null);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-gmm-points', []);
+  const [gmmState, setGmmState] = usePersistentState<GMMState | null>('omodels-gmm-gmmState', null);
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
   const [vpVer, setVpVer] = useState(0);
   const dragRef = useRef<{ sx: number; sy: number; vp: typeof vpRef.current } | null>(null);
   const [hoverPt, setHoverPt] = useState<{ x: number; y: number; px: number; py: number } | null>(null);
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number; y: number; probs: number[]}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number; y: number; probs: number[]}[]>('omodels-gmm-inferResults', []);
 
   const k = (params.k as number) ?? 3;
   const maxIter = (params.maxIter as number) ?? 100;
@@ -36,14 +38,29 @@ export default function GMMVisualization({
     ]);
   }, [onMetricsUpdate]);
 
-  useEffect(() => { if (dataset === 'custom') return; setPoints(generateClusteringData(dataset, numPoints, noise)); setGmmState(null); setInferResults([]); }, [dataset, numPoints, noise]);
+  // Import from store
+  const { importedData, importVersion } = usePlayground();
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    setPoints(importedData as any);
+    // Reset model state for clean start
+    setGmmState(null); setInferResults([]);
+    // Auto-zoom viewport
+    const xs = importedData.map((p: any) => p.x), ys = importedData.map((p: any) => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (dataset === 'custom' || dataset === 'import') return; setPoints(generateClusteringData(dataset, numPoints, noise)); setGmmState(null); setInferResults([]); }, [dataset, numPoints, noise]);
   useEffect(() => { if (resetVersion === 0) return; setGmmState(null); setInferResults([]); vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, [resetVersion]);
   useEffect(() => { setGmmState(null); }, [k, covType, initMethod]); // Reset on param changes
 
   // Mouse handlers
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dragRef.current) return; const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; setPoints(prev => [...prev, { x: vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin), y: vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin) }]); setGmmState(null); }, []);
   const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => { if (!e.ctrlKey) return; e.preventDefault(); const f = e.deltaY > 0 ? 1.1 : 0.9; const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; const mx = vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin); const my = vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin); vpRef.current = { xMin: mx + (vp.xMin - mx) * f, xMax: mx + (vp.xMax - mx) * f, yMin: my + (vp.yMin - my) * f, yMax: my + (vp.yMax - my) * f }; setVpVer(v => v + 1); }, []);
-  const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dataset === 'custom') return; dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } }; }, [dataset]);
+  const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dataset === 'custom' || dataset === 'import') return; dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } }; }, [dataset]);
   const handleMouseMove = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; setHoverPt({ x: vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin), y: vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin), px: e.clientX - r.left, py: e.clientY - r.top }); if (!dragRef.current) return; const dr = dragRef.current; const dx = ((e.clientX - dr.sx) / r.width) * (dr.vp.xMax - dr.vp.xMin); const dy = ((e.clientY - dr.sy) / r.height) * (dr.vp.yMax - dr.vp.yMin); vpRef.current = { xMin: dr.vp.xMin - dx, xMax: dr.vp.xMax - dx, yMin: dr.vp.yMin + dy, yMax: dr.vp.yMax + dy }; setVpVer(v => v + 1); }, []);
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
   const resetView = useCallback(() => { vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, []);
@@ -134,7 +151,56 @@ export default function GMMVisualization({
         </div>
       )}
 
-      {/* 4. INFERENCE */}
+      {/* 4. GMM ALGORITHM TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">GMM ALGORITHM TRACKER</span>
+          <span className="viz-ctrl__subtitle">Mathematical breakdown & EM Algorithm flow</span>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Mixture Model Formulation</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Probability Density: <span style={{ color: '#a855f7' }}>p(x) = Σ πₖ · N(x | μₖ, Σₖ)</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Expectation Step (E-Step)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Responsibility: <span style={{ color: 'var(--c-error)' }}>γ(zₖ) = (πₖ · N(x | μₖ, Σₖ)) / p(x)</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Maximization Step (M-Step)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Means: <span style={{ color: 'var(--c-primary)' }}>μₖ = (1 / Nₖ) Σ γ(zₖ) · x</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Covariances: <span style={{ color: 'var(--c-tertiary)' }}>Σₖ = (1 / Nₖ) Σ γ(zₖ) · (x - μₖ)(x - μₖ)ᵀ</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Weights: <span style={{ color: '#4ade80' }}>πₖ = Nₖ / N</span></div>
+          </div>
+
+          {inferResults.length > 0 && gmmState && (
+            <div style={{ background: 'var(--c-surface-variant)', padding: '10px', border: '1px solid var(--c-panel-border)' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', color: 'var(--c-primary)', marginBottom: '8px' }}>
+                Latest Inference Responsibilities γ(zₖ):
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
+                {inferResults[0].probs.map((prob, idx) => {
+                  const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length];
+                  return (
+                    <div key={idx} style={{ background: 'rgba(0,0,0,0.2)', padding: '6px', fontSize: '10px', borderLeft: `3px solid ${color}` }}>
+                      <div style={{ color: color, fontWeight: 'bold' }}>Component {idx + 1}</div>
+                      <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Weight:</span>
+                        <span style={{ fontFamily: 'monospace', color: 'var(--c-error)' }}>{(prob * 100).toFixed(2)}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 5. INFERENCE */}
       <div className="viz-scroll__section viz-scroll__section--infer">
         <div className="viz-ctrl__header"><span className="viz-ctrl__title">INFERENCE</span><span className="viz-ctrl__subtitle">Soft responsibility prediction</span></div>
         <div className="viz-infer__input-row">

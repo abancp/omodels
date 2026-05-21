@@ -14,13 +14,14 @@ const svmDescriptor: ModelDescriptor = {
   params: [
     {
       type: 'chip-select',
-      key: 'degree',
-      label: 'Kernel Degree',
+      key: 'kernel',
+      label: 'Kernel Type',
       options: [
-        { value: '1', label: 'Linear (1)' },
-        { value: '2', label: 'Polynomial (2)' }
+        { value: 'linear', label: 'Linear' },
+        { value: 'poly2', label: 'Polynomial (2)' },
+        { value: 'rbf', label: 'RBF (Gaussian)' }
       ],
-      defaultValue: '1'
+      defaultValue: 'linear'
     },
     {
       type: 'slider',
@@ -61,7 +62,8 @@ const svmDescriptor: ModelDescriptor = {
       { value: 'circles', label: 'Circles' },
       { value: 'linear', label: 'Linearly Separable' },
       { value: 'xor', label: 'XOR Pattern' },
-      { value: 'spiral', label: 'Spiral' }
+      { value: 'spiral', label: 'Spiral' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     params: [
       {

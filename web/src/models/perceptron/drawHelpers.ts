@@ -8,13 +8,25 @@ export const COLORS = {
   bg1: 'rgba(74, 222, 128, 0.2)',
 };
 
+export const FEATURE_COLORS = [
+  '#ff4757', // Coral Red
+  '#2ed573', // Bright Green
+  '#1e90ff', // Neon Blue
+  '#ffa502', // Orange
+  '#eccc68', // Soft Gold
+  '#a855f7', // Purple
+  '#00d2d3', // Teal
+];
+
 export function drawDataCanvas(
   canvas: HTMLCanvasElement,
   points: Point[],
   state: PerceptronState,
   vp: { xMin: number; xMax: number; yMin: number; yMax: number },
   _dataset: string,
-  inferResults: { features: number[]; pred: number }[]
+  inferResults: { features: number[]; pred: number; rawFeatures?: number[] }[],
+  xAxisMode: 'standard' | 'multi-feature' = 'standard',
+  selectedXFeatureIdx: number = 0
 ) {
   const ctx = canvas.getContext('2d'); if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -23,8 +35,7 @@ export function drawDataCanvas(
   ctx.scale(dpr, dpr);
   const W = rect.width, H = rect.height;
 
-  // Background
-  ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, H);
 
   // Defensive check for state migration/HMR
   if (!state.hiddenWeights || !state.hiddenBias || !state.outWeights) return;
@@ -34,83 +45,198 @@ export function drawDataCanvas(
     H - ((y - vp.yMin) / (vp.yMax - vp.yMin)) * H
   ];
 
-  // Draw decision boundary mapping using a grid
-  const gridSize = 40;
-  const dx = (vp.xMax - vp.xMin) / gridSize;
-  const dy = (vp.yMax - vp.yMin) / gridSize;
-
-  const baseFeatures = new Array(state.numInputs).fill(0.5);
-
-  ctx.globalAlpha = 0.4;
-  for (let i = 0; i < gridSize; i++) {
-    for (let j = 0; j < gridSize; j++) {
-      const vx = vp.xMin + i * dx;
-      const vy = vp.yMin + j * dy;
-      
-      const features = [...baseFeatures];
-      features[0] = vx;
-      if (state.numInputs > 1) features[1] = vy;
-
-      // Predict
-      const hiddenActs = new Array(state.numPerceptrons);
-      for (let k = 0; k < state.numPerceptrons; k++) {
-        let sum = state.hiddenBias[k] || 0;
-        for (let f = 0; f < state.numInputs; f++) {
-          sum += features[f] * (state.hiddenWeights[k]?.[f] || 0);
-        }
-        let act = sum;
-        if (state.activation === 'step') act = sum >= 0 ? 1 : 0;
-        else if (state.activation === 'sigmoid') act = 1 / (1 + Math.exp(-sum));
-        else if (state.activation === 'relu') act = Math.max(0, sum);
-        else if (state.activation === 'tanh') act = Math.tanh(sum);
-        hiddenActs[k] = act;
-      }
-      let outSum = state.outBias || 0;
-      for (let k = 0; k < state.numPerceptrons; k++) {
-        outSum += hiddenActs[k] * (state.outWeights[k] || 0);
-      }
-      const pred = 1 / (1 + Math.exp(-outSum));
-
-      const [px, py] = toPx(vx, vy);
-      const [px2, py2] = toPx(vx + dx, vy + dy);
-
-      ctx.fillStyle = pred > 0.5 ? COLORS.bg1 : COLORS.bg0;
-      ctx.fillRect(px, Math.min(py, py2), Math.abs(px2 - px) + 1, Math.abs(py2 - py) + 1);
-    }
-  }
-  ctx.globalAlpha = 1.0;
-
-  // Draw points
-  for (const pt of points) {
-    if (!pt.features || pt.features.length < 1) continue;
-    const [px, py] = toPx(pt.features[0], state.numInputs > 1 ? pt.features[1] : 0);
-    ctx.beginPath();
-    ctx.arc(px, py, 6, 0, Math.PI * 2);
-    ctx.fillStyle = pt.label === 1 ? COLORS.class1 : COLORS.class0;
-    ctx.fill();
-    ctx.strokeStyle = COLORS.border;
+  if (xAxisMode === 'multi-feature') {
+    // 1. Draw Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+    // vertical grid lines
+    for (let xVal = 0; xVal <= 1.05; xVal += 0.2) {
+      const [px1, py1] = toPx(xVal, vp.yMin);
+      const [px2, py2] = toPx(xVal, vp.yMax);
+      ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke();
+      // add x value labels at the bottom
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '9px monospace';
+      ctx.fillText(xVal.toFixed(1), px1 - 8, H - 4);
+    }
+    // horizontal grid lines
+    const yStep = (vp.yMax - vp.yMin) / 5 || 0.2;
+    for (let yVal = vp.yMin; yVal <= vp.yMax; yVal += yStep) {
+      const [px1, py1] = toPx(vp.xMin, yVal);
+      const [px2, py2] = toPx(vp.xMax, yVal);
+      ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke();
+      // add y labels
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '9px monospace';
+      ctx.fillText(yVal.toFixed(2), 4, py1 + 3);
+    }
 
-  // Draw inference points
-  for (const res of inferResults) {
-    if (!res.features || res.features.length < 1) continue;
-    const [px, py] = toPx(res.features[0], state.numInputs > 1 ? res.features[1] : 0);
-    ctx.beginPath();
-    ctx.arc(px, py, 10, 0, Math.PI * 2);
-    ctx.fillStyle = res.pred > 0.5 ? COLORS.class1 : COLORS.class0;
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    ctx.stroke();
+    // 2. Draw prediction curves (if model has been trained / has weights)
+    if (state.hiddenWeights && state.hiddenWeights.length > 0) {
+      const featuresToDraw = selectedXFeatureIdx === -1
+        ? Array.from({ length: state.numInputs }, (_, idx) => idx)
+        : [selectedXFeatureIdx];
+
+      const meanFeatures = new Array(state.numInputs).fill(0.5);
+      if (points.length > 0) {
+        for (let f = 0; f < state.numInputs; f++) {
+          let sum = 0;
+          for (const p of points) sum += p.features[f] ?? 0.5;
+          meanFeatures[f] = sum / points.length;
+        }
+      }
+
+      ctx.shadowBlur = 0;
+      for (const f of featuresToDraw) {
+        ctx.strokeStyle = FEATURE_COLORS[f % FEATURE_COLORS.length];
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        
+        const steps = 60;
+        for (let s = 0; s <= steps; s++) {
+          const vx = 0 + (s / steps) * 1;
+          const features = [...meanFeatures];
+          features[f] = vx;
+
+          // Run prediction
+          const hiddenActs = new Array(state.numPerceptrons);
+          for (let k = 0; k < state.numPerceptrons; k++) {
+            let sum = state.hiddenBias[k] || 0;
+            for (let fi = 0; fi < state.numInputs; fi++) {
+              sum += features[fi] * (state.hiddenWeights[k]?.[fi] || 0);
+            }
+            let act = sum;
+            if (state.activation === 'step') act = sum >= 0 ? 1 : 0;
+            else if (state.activation === 'sigmoid') act = 1 / (1 + Math.exp(-sum));
+            else if (state.activation === 'relu') act = Math.max(0, sum);
+            else if (state.activation === 'tanh') act = Math.tanh(sum);
+            hiddenActs[k] = act;
+          }
+          let outSum = state.outBias || 0;
+          for (let k = 0; k < state.numPerceptrons; k++) {
+            outSum += hiddenActs[k] * (state.outWeights[k] || 0);
+          }
+          const pred = 1 / (1 + Math.exp(-outSum));
+
+          const [px, py] = toPx(vx, pred);
+          if (s === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // 3. Draw Points
+    const featuresToDraw = selectedXFeatureIdx === -1
+      ? Array.from({ length: state.numInputs }, (_, idx) => idx)
+      : [selectedXFeatureIdx];
+
+    for (const pt of points) {
+      if (!pt.features) continue;
+      for (const f of featuresToDraw) {
+        const val = pt.features[f] ?? 0.5;
+        const [px, py] = toPx(val, pt.label);
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.fillStyle = FEATURE_COLORS[f % FEATURE_COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+
+    // 4. Draw Inference Reference points
+    for (const res of inferResults) {
+      if (!res.features) continue;
+      const [px, py] = toPx(res.features[selectedXFeatureIdx === -1 ? 0 : selectedXFeatureIdx], res.pred);
+      ctx.beginPath();
+      ctx.arc(px, py, 8, 0, Math.PI * 2);
+      ctx.fillStyle = selectedXFeatureIdx === -1 ? '#fff' : FEATURE_COLORS[selectedXFeatureIdx % FEATURE_COLORS.length];
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+  } else {
+    // STANDARD DECISION SPACE GRID RENDERING (existing codebase logic)
+    const gridSize = 40;
+    const dx = (vp.xMax - vp.xMin) / gridSize;
+    const dy = (vp.yMax - vp.yMin) / gridSize;
     
-    // Pulse effect
-    ctx.beginPath();
-    ctx.arc(px, py, 16, 0, Math.PI * 2);
-    ctx.strokeStyle = res.pred > 0.5 ? COLORS.class1 : COLORS.class0;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    const baseFeatures = new Array(state.numInputs).fill(0.5);
+
+    ctx.globalAlpha = 0.4;
+    for (let i = 0; i < gridSize; i++) {
+      for (let j = 0; j < gridSize; j++) {
+        const vx = vp.xMin + i * dx;
+        const vy = vp.yMin + j * dy;
+        
+        const features = [...baseFeatures];
+        features[0] = vx;
+        if (state.numInputs > 1) features[1] = vy;
+
+        // Predict
+        const hiddenActs = new Array(state.numPerceptrons);
+        for (let k = 0; k < state.numPerceptrons; k++) {
+          let sum = state.hiddenBias[k] || 0;
+          for (let f = 0; f < state.numInputs; f++) {
+            sum += features[f] * (state.hiddenWeights[k]?.[f] || 0);
+          }
+          let act = sum;
+          if (state.activation === 'step') act = sum >= 0 ? 1 : 0;
+          else if (state.activation === 'sigmoid') act = 1 / (1 + Math.exp(-sum));
+          else if (state.activation === 'relu') act = Math.max(0, sum);
+          else if (state.activation === 'tanh') act = Math.tanh(sum);
+          hiddenActs[k] = act;
+        }
+        let outSum = state.outBias || 0;
+        for (let k = 0; k < state.numPerceptrons; k++) {
+          outSum += hiddenActs[k] * (state.outWeights[k] || 0);
+        }
+        const pred = 1 / (1 + Math.exp(-outSum));
+
+        const [px, py] = toPx(vx, vy);
+        const [px2, py2] = toPx(vx + dx, vy + dy);
+
+        ctx.fillStyle = pred > 0.5 ? COLORS.bg1 : COLORS.bg0;
+        ctx.fillRect(px, Math.min(py, py2), Math.abs(px2 - px) + 1, Math.abs(py2 - py) + 1);
+      }
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Draw Points
+    for (const pt of points) {
+      if (!pt.features || pt.features.length < 1) continue;
+      const [px, py] = toPx(pt.features[0], state.numInputs > 1 ? pt.features[1] : 0);
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.fillStyle = pt.label === 1 ? COLORS.class1 : COLORS.class0;
+      ctx.fill();
+      ctx.strokeStyle = COLORS.border;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Inference Reference Points
+    for (const res of inferResults) {
+      if (!res.features || res.features.length < 1) continue;
+      const [px, py] = toPx(res.features[0], state.numInputs > 1 ? res.features[1] : 0);
+      ctx.beginPath();
+      ctx.arc(px, py, 10, 0, Math.PI * 2);
+      ctx.fillStyle = res.pred > 0.5 ? COLORS.class1 : COLORS.class0;
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.arc(px, py, 16, 0, Math.PI * 2);
+      ctx.strokeStyle = res.pred > 0.5 ? COLORS.class1 : COLORS.class0;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
   }
 }
 

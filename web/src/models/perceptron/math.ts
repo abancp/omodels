@@ -13,6 +13,7 @@ export interface PerceptronState {
   outWeights: number[];      // [numPerceptrons]
   outBias: number;
   activation: ActivationType;
+  outAct: ActivationType;
   learningRate: number;
   epoch: number;
   maxEpochs: number;
@@ -44,20 +45,21 @@ export function activationDerivative(output: number, type: ActivationType): numb
 
 // Predict for a single point
 export function predictPerceptron(p: Point, state: PerceptronState): { hiddenActs: number[], pred: number } {
+  const features = p?.features || [0.5, 0.5];
   const hiddenActs = new Array(state.numPerceptrons);
   for (let k = 0; k < state.numPerceptrons; k++) {
-    let sum = state.hiddenBias[k];
+    let sum = state.hiddenBias[k] || 0;
     for (let j = 0; j < state.numInputs; j++) {
-      sum += p.features[j] * state.hiddenWeights[k][j];
+      sum += (features[j] ?? 0.5) * (state.hiddenWeights[k]?.[j] ?? 0);
     }
     hiddenActs[k] = applyActivation(sum, state.activation);
   }
   
-  let outSum = state.outBias;
+  let outSum = state.outBias || 0;
   for (let k = 0; k < state.numPerceptrons; k++) {
-    outSum += hiddenActs[k] * state.outWeights[k];
+    outSum += hiddenActs[k] * (state.outWeights[k] ?? 0);
   }
-  const pred = applyActivation(outSum, 'sigmoid'); // usually output is sigmoid for binary class
+  const pred = applyActivation(outSum, state.outAct ?? 'sigmoid'); // Use output activation
   
   return { hiddenActs, pred };
 }
@@ -83,8 +85,8 @@ export function trainStep(points: Point[], state: PerceptronState): PerceptronSt
 
     // Backward pass
     // Output layer delta
-    // Derivative of sigmoid output
-    const predDeriv = pred * (1 - pred);
+    // Derivative of output activation
+    const predDeriv = activationDerivative(pred, state.outAct ?? 'sigmoid');
     const deltaOut = error * predDeriv;
 
     // Hidden layer deltas

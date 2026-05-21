@@ -8,7 +8,8 @@ export function drawDataCanvas(
   canvas: HTMLCanvasElement, points: Point[], state: KMeansState | null,
   vp: { xMin: number; xMax: number; yMin: number; yMax: number },
   inferResults: { x: number; y: number; cluster: number }[], dataset: string,
-  showVoronoi: boolean, showCentroidPath: boolean
+  showVoronoi: boolean, showCentroidPath: boolean,
+  testPoints?: Point[]
 ) {
   const ctx = canvas.getContext('2d'); if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -60,6 +61,18 @@ export function drawDataCanvas(
     for (const p of points) {
       ctx.beginPath(); ctx.arc(mapX(p.x), mapY(p.y), 4, 0, Math.PI * 2);
       ctx.fillStyle = '#888888'; ctx.fill();
+    }
+  }
+
+  // Draw test points if present
+  if (testPoints && testPoints.length > 0) {
+    for (const p of testPoints) {
+      const sx = mapX(p.x), sy = mapY(p.y);
+      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#10b981'; ctx.fill();
+      ctx.strokeStyle = '#00000040'; ctx.lineWidth = 0.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#10b98140'; ctx.lineWidth = 0.5; ctx.stroke();
     }
   }
 

@@ -82,7 +82,8 @@ const descriptor: ModelDescriptor = {
       { value: 'circles', label: 'Circles' },
       { value: 'linear', label: 'Linearly Separable' },
       { value: 'xor', label: 'XOR Pattern' },
-      { value: 'spiral', label: 'Spiral' }
+      { value: 'spiral', label: 'Spiral' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     params: [
       {

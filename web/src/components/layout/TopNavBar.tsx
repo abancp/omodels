@@ -1,13 +1,27 @@
 import Icon from '../common/Icon';
 import { useTheme } from '../../theme';
-import { usePlayground } from '../../store';
+import { useContext } from 'react';
+import { PlaygroundContext } from '../../store/PlaygroundStore';
 
-const NAV_TABS = ['Playground', 'Builder', 'Compare'] as const;
+const NAV_TABS = [
+  { id: 'playground', label: 'Playground' },
+  { id: 'builder', label: 'Builder' },
+  { id: 'compare', label: 'Compare' },
+  { id: 'datastudio', label: 'Data Studio' }
+] as const;
 
-export default function TopNavBar() {
+export type ViewType = 'playground' | 'datastudio' | 'builder' | 'compare';
+
+interface TopNavBarProps {
+  onSearchClick: () => void;
+  activeView: ViewType;
+  onViewChange: (view: ViewType) => void;
+}
+
+export default function TopNavBar({ onSearchClick, activeView, onViewChange }: TopNavBarProps) {
   const { toggleTheme, isDark } = useTheme();
-  const { model } = usePlayground();
-  const activeTab = 'Playground'; // only Playground is functional for now
+  const pgCtx = useContext(PlaygroundContext);
+  const model = pgCtx?.model ?? null;
 
   return (
     <header className="topnav" id="topnav">
@@ -16,10 +30,16 @@ export default function TopNavBar() {
         <nav className="topnav__tabs">
           {NAV_TABS.map((tab) => (
             <div
-              key={tab}
-              className={`topnav__tab ${tab === activeTab ? 'topnav__tab--active' : ''}`}
+              key={tab.id}
+              className={`topnav__tab ${tab.id === activeView ? 'topnav__tab--active' : ''}`}
+              onClick={() => {
+                if (tab.id === 'playground' || tab.id === 'datastudio') {
+                  onViewChange(tab.id);
+                }
+              }}
+              style={{ cursor: (tab.id === 'playground' || tab.id === 'datastudio') ? 'pointer' : 'not-allowed', opacity: (tab.id === 'playground' || tab.id === 'datastudio') ? 1 : 0.5 }}
             >
-              <span>{tab}</span>
+              <span>{tab.label}</span>
             </div>
           ))}
         </nav>
@@ -34,7 +54,7 @@ export default function TopNavBar() {
           </div>
         )}
         <div className="topnav__divider" />
-        <button className="topnav__icon-btn" title="Search" id="btn-search">
+        <button className="topnav__icon-btn" title="Search (⌘K)" id="btn-search" onClick={onSearchClick}>
           <Icon name="search" size={16} />
         </button>
         <button className="topnav__icon-btn" title="Layout" id="btn-layout">

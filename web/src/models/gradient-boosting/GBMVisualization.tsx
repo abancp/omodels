@@ -1,7 +1,9 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateClassificationData, trainGBM, gbmPredictSingle, gbmPredictProbability, getStageContributions, computeMetrics, computeConfusionMatrix, computeDataStats, type Point, type GBMState } from './math';
 import { drawDataCanvas, drawLossCanvas, drawROCCanvas } from './drawHelpers';
+import { usePlayground } from '../../store';
 
 export default function GBMVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -9,8 +11,8 @@ export default function GBMVisualization({
   const dataRef = useRef<HTMLCanvasElement>(null);
   const lossRef = useRef<HTMLCanvasElement>(null);
   const rocRef = useRef<HTMLCanvasElement>(null);
-  const [points, setPoints] = useState<Point[]>([]);
-  const [gbmState, setGbmState] = useState<GBMState | null>(null);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-gradient-boosting-points', []);
+  const [gbmState, setGbmState] = usePersistentState<GBMState | null>('omodels-gradient-boosting-gbmState', null);
   const [activeStages, setActiveStages] = useState<number | undefined>(undefined);
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
   const [vpVer, setVpVer] = useState(0);
@@ -18,7 +20,7 @@ export default function GBMVisualization({
   const [hoverPt, setHoverPt] = useState<{ x: number; y: number; px: number; py: number } | null>(null);
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number; y: number; prob: number; cls: number; rawScore: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number; y: number; prob: number; cls: number; rawScore: number}[]>('omodels-gradient-boosting-inferResults', []);
 
   const nEstimators = (params.nEstimators as number) ?? 30;
   const learningRate = (params.learningRate as number) ?? 0.1;
@@ -38,13 +40,65 @@ export default function GBMVisualization({
     ]);
   }, [points, onMetricsUpdate]);
 
-  useEffect(() => { if (dataset === 'custom') return; setPoints(generateClassificationData(dataset, numPoints, noise)); setGbmState(null); setInferResults([]); setActiveStages(undefined); }, [dataset, numPoints, noise]);
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0 || !gbmState) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let tp = 0, tn = 0, fp = 0, fn = 0;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0);
+      const trueClass = p.cls !== undefined ? p.cls : (p.label ?? 0);
+      
+      const predClass = gbmPredictSingle(x, y, gbmState);
+      const prob = gbmPredictProbability(x, y, gbmState);
+
+      if (trueClass === 1 && predClass === 1) tp++;
+      else if (trueClass === 0 && predClass === 0) tn++;
+      else if (trueClass === 0 && predClass === 1) fp++;
+      else fn++;
+      results.predictions.push({ features: [x, y], actual: trueClass, predicted: predClass, confidence: prob });
+    }
+    results.type = 'binary';
+    results.accuracy = (tp + tn) / total;
+    results.precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+    results.recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+    results.f1 = (results.precision + results.recall) > 0 ? 2 * results.precision * results.recall / (results.precision + results.recall) : 0;
+    results.tp = tp; results.tn = tn; results.fp = fp; results.fn = fn;
+    results.confusionMatrix = [[tn, fp], [fn, tp]];
+
+    setTestResults(results);
+  }, [testVersion, testData, gbmState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) for binary classifiers
+    const pts = (importedData as any[]).map((p: any) => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean start
+    setGbmState(null); setInferResults([]); setActiveStages(undefined);
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (dataset === 'custom' || dataset === 'import') return; setPoints(generateClassificationData(dataset, numPoints, noise)); setGbmState(null); setInferResults([]); setActiveStages(undefined); }, [dataset, numPoints, noise]);
   useEffect(() => { if (resetVersion === 0) return; setGbmState(null); setInferResults([]); setActiveStages(undefined); vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, [resetVersion]);
 
   // Mouse handlers (same pattern)
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dragRef.current) return; const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; setPoints(prev => [...prev, { x: vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin), y: vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin), cls: e.shiftKey ? 1 : 0 }]); }, []);
   const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => { if (!e.ctrlKey) return; e.preventDefault(); const f = e.deltaY > 0 ? 1.1 : 0.9; const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; const mx = vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin); const my = vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin); vpRef.current = { xMin: mx + (vp.xMin - mx) * f, xMax: mx + (vp.xMax - mx) * f, yMin: my + (vp.yMin - my) * f, yMax: my + (vp.yMax - my) * f }; setVpVer(v => v + 1); }, []);
-  const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dataset === 'custom') return; dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } }; }, [dataset]);
+  const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dataset === 'custom' || dataset === 'import') return; dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } }; }, [dataset]);
   const handleMouseMove = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; setHoverPt({ x: vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin), y: vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin), px: e.clientX - r.left, py: e.clientY - r.top }); if (!dragRef.current) return; const dr = dragRef.current; const dx = ((e.clientX - dr.sx) / r.width) * (dr.vp.xMax - dr.vp.xMin); const dy = ((e.clientY - dr.sy) / r.height) * (dr.vp.yMax - dr.vp.yMin); vpRef.current = { xMin: dr.vp.xMin - dx, xMax: dr.vp.xMax - dx, yMin: dr.vp.yMin + dy, yMax: dr.vp.yMax + dy }; setVpVer(v => v + 1); }, []);
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
   const resetView = useCallback(() => { vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, []);
@@ -180,7 +234,35 @@ export default function GBMVisualization({
         </div>
       )}
 
-      {/* 5. INFERENCE */}
+      {/* 5. GBM ALGORITHM TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">GRADIENT BOOSTING ALGORITHM TRACKER</span>
+          <span className="viz-ctrl__subtitle">Mathematical breakdown of stage-wise learning</span>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Initialization & Objective</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Log-Loss: <span style={{ color: '#a855f7' }}>L(y, F) = -[y·log(p) + (1-y)·log(1-p)]</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Base Score: <span style={{ color: 'var(--c-primary)' }}>F₀(x) = log(P(y=1) / P(y=0))</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Pseudo-Residuals (Gradients)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Prediction: <span style={{ color: '#a855f7' }}>{"p_m = 1 / (1 + e^{-F_{m-1}(x)})"}</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Residual: <span style={{ color: 'var(--c-error)' }}>r_im = -[∂L / ∂F(x_i)] = y_i - p_m</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Model Update (Stage m)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Fit Weak Learner: <span style={{ color: '#a855f7' }}>h_m(x) ≈ r_im (using Tree Depth {maxDepth})</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Score: <span style={{ color: 'var(--c-primary)' }}>{"F_m(x) = F_{m-1}(x) + (η)·h_m(x)"}</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. INFERENCE */}
       <div className="viz-scroll__section viz-scroll__section--infer">
         <div className="viz-ctrl__header"><span className="viz-ctrl__title">INFERENCE</span><span className="viz-ctrl__subtitle">Boosted prediction with stage breakdown</span></div>
         <div className="viz-infer__input-row">
@@ -218,7 +300,7 @@ export default function GBMVisualization({
         )}
       </div>
 
-      {/* 6. DATA STATISTICS */}
+      {/* 7. DATA STATISTICS */}
       {stats && (
         <div className="viz-scroll__section viz-scroll__section--stats">
           <div className="viz-ctrl__header"><span className="viz-ctrl__title">DATA STATISTICS</span></div>

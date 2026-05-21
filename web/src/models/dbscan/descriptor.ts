@@ -29,6 +29,7 @@ const descriptor: ModelDescriptor = {
       { value: 'moons', label: 'Moons' }, { value: 'circles', label: 'Circles' },
       { value: 'blobs', label: 'Blobs' }, { value: 'uniform', label: 'Uniform' },
       { value: 'anisotropic', label: 'Anisotropic' }, { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'moons',
     params: [

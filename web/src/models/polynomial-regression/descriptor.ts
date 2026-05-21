@@ -168,6 +168,7 @@ const descriptor: ModelDescriptor = {
       { value: 'step', label: 'Step Function' },
       { value: 'noisy', label: 'Noisy Quadratic' },
       { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'quadratic',
     params: [

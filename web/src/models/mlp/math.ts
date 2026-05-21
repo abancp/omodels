@@ -3,7 +3,7 @@ export interface Point {
   label: number;
 }
 
-export type ActivationType = 'step' | 'sigmoid' | 'tanh' | 'relu' | 'linear';
+export type ActivationType = 'step' | 'sigmoid' | 'tanh' | 'relu' | 'linear' | 'softmax';
 
 export interface MLPLayer {
   nodes: number;
@@ -20,6 +20,14 @@ export interface MLPState {
   maxEpochs: number;
   lossHistory: number[];
   converged: boolean;
+  
+  // Real-time backtracking tracker metrics
+  layerGradients?: number[]; // Average absolute delta per layer
+  layerWeightsMean?: number[]; // Average absolute weight per layer
+  
+  // Rolling 50-epoch history for sparklines
+  layerGradientsHistory?: number[][]; 
+  layerWeightsMeanHistory?: number[][];
 }
 
 export function applyActivation(sum: number, type: ActivationType): number {
@@ -44,25 +52,36 @@ export function activationDerivative(output: number, type: ActivationType): numb
   }
 }
 
-export function predictMLP(features: number[], state: MLPState): { acts: number[][], pred: number } {
+export function applyLayerActivation(sums: number[], type: ActivationType): number[] {
+  if (type === 'softmax') {
+    const max = Math.max(...sums);
+    const exps = sums.map(s => Math.exp(s - max));
+    const sumExps = exps.reduce((a, b) => a + b, 0);
+    return exps.map(e => e / sumExps);
+  }
+  return sums.map(s => applyActivation(s, type));
+}
+
+export function predictMLP(features: number[], state: MLPState): { acts: number[][], pred: number[] } {
   const acts: number[][] = [];
-  let currentIn = features;
+  let currentIn = features || [0.5, 0.5];
 
   for (let l = 0; l < state.layers.length; l++) {
     const layer = state.layers[l];
-    const nextActs = new Array(layer.nodes);
+    const sums = new Array(layer.nodes);
     for (let k = 0; k < layer.nodes; k++) {
       let sum = layer.biases[k];
       for (let j = 0; j < currentIn.length; j++) {
-        sum += currentIn[j] * layer.weights[k][j];
+        sum += currentIn[j] * (layer.weights[k]?.[j] ?? 0);
       }
-      nextActs[k] = applyActivation(sum, layer.activation);
+      sums[k] = sum;
     }
+    const nextActs = applyLayerActivation(sums, layer.activation);
     acts.push(nextActs);
     currentIn = nextActs;
   }
   
-  return { acts, pred: currentIn[0] };
+  return { acts, pred: currentIn };
 }
 
 export function trainStep(points: Point[], state: MLPState): MLPState {
@@ -78,21 +97,44 @@ export function trainStep(points: Point[], state: MLPState): MLPState {
   }));
 
   const L = newLayers.length;
+  let lastDeltas: number[][] = [];
 
   for (const p of points) {
-    const { acts, pred } = predictMLP(p.features, { ...state, layers: newLayers });
+    const { acts } = predictMLP(p.features, { ...state, layers: newLayers });
     
-    const error = p.label - pred;
-    mse += error * error;
-
     // Deltas: array of layers, each has delta per node
     const deltas: number[][] = new Array(L);
     
     // Output layer (L-1)
     const outLayer = newLayers[L - 1];
-    const outAct = acts[L - 1][0];
-    const outDeriv = activationDerivative(outAct, outLayer.activation);
-    deltas[L - 1] = [error * outDeriv];
+    deltas[L - 1] = new Array(outLayer.nodes);
+    
+    // For simplicity, handle MSE loss + softmax as (pred - target) * deriv.
+    // In strict cross-entropy + softmax, delta is just (pred - target). 
+    // We map label (0 or 1) to a one-hot vector if there are multiple output nodes.
+    const targets = new Array(outLayer.nodes).fill(0);
+    if (outLayer.nodes > 1) {
+      if (p.label < outLayer.nodes) targets[p.label] = 1;
+    } else {
+      targets[0] = p.label;
+    }
+
+    for (let k = 0; k < outLayer.nodes; k++) {
+      const outAct = acts[L - 1][k];
+      const err = targets[k] - outAct;
+      let outDeriv = 1;
+      if (outLayer.activation === 'softmax') {
+        outDeriv = outAct * (1 - outAct); // Simplistic approx for diagonal of Jacobian
+      } else {
+        outDeriv = activationDerivative(outAct, outLayer.activation);
+      }
+      deltas[L - 1][k] = err * outDeriv;
+      
+      // Update MSE tracking. For multiple nodes, average error? Just track node 0 or sum for simplicity.
+      if (k === 0 || outLayer.nodes > 1) {
+          mse += err * err;
+      }
+    }
 
     // Backprop hidden layers
     for (let l = L - 2; l >= 0; l--) {
@@ -122,16 +164,50 @@ export function trainStep(points: Point[], state: MLPState): MLPState {
         layer.biases[k] += state.learningRate * deltas[l][k];
       }
     }
+    lastDeltas = deltas;
   }
 
   mse /= points.length;
+
+  const layerGradients: number[] = [];
+  const layerWeightsMean: number[] = [];
+  
+  const layerGradientsHistory = (state.layerGradientsHistory ?? []).map(a => [...a]);
+  const layerWeightsMeanHistory = (state.layerWeightsMeanHistory ?? []).map(a => [...a]);
+
+  // `lastDeltas` is indexed from 0 to L-1
+  for (let l = 0; l < L; l++) {
+    const avgGrad = lastDeltas[l] ? lastDeltas[l].reduce((a, b) => a + Math.abs(b), 0) / lastDeltas[l].length : 0;
+    layerGradients.push(avgGrad);
+    
+    let sumW = 0, countW = 0;
+    for (const row of newLayers[l].weights) {
+      for (const w of row) { sumW += Math.abs(w); countW++; }
+    }
+    const avgW = countW > 0 ? sumW / countW : 0;
+    layerWeightsMean.push(avgW);
+    
+    if (!layerGradientsHistory[l]) layerGradientsHistory[l] = [];
+    if (!layerWeightsMeanHistory[l]) layerWeightsMeanHistory[l] = [];
+    
+    layerGradientsHistory[l].push(avgGrad);
+    layerWeightsMeanHistory[l].push(avgW);
+    
+    // Keep only last 50 epochs for the sparkline
+    if (layerGradientsHistory[l].length > 50) layerGradientsHistory[l].shift();
+    if (layerWeightsMeanHistory[l].length > 50) layerWeightsMeanHistory[l].shift();
+  }
 
   return {
     ...state,
     layers: newLayers,
     epoch: state.epoch + 1,
     lossHistory: [...state.lossHistory, mse],
-    converged: mse < 1e-4
+    converged: mse < 1e-4,
+    layerGradients,
+    layerWeightsMean,
+    layerGradientsHistory,
+    layerWeightsMeanHistory
   };
 }
 

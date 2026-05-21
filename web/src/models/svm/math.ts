@@ -80,33 +80,69 @@ export function generateSVMData(dataset: string, count: number, noise: number): 
   return pts.slice(0, count);
 }
 
-/* ─── SVM Math ─── */
-// Features mapping for non-linear boundaries via polynomial kernel equivalent
-export function expandFeatures(x1: number, x2: number, degree: number): number[] {
-  if (degree === 1) return [x1, x2];
-  if (degree === 2) return [x1, x2, x1 * x1, x2 * x2, x1 * x2];
-  return [x1, x2];
+/* ─── SVM Math (RFF for RBF) ─── */
+function boxMuller(rand: () => number) {
+  let u1 = 0, u2 = 0;
+  while (u1 === 0) u1 = rand();
+  while (u2 === 0) u2 = rand();
+  const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+  const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+  return { z0, z1 };
 }
 
-/** Get the number of features for a given degree */
-export function featureCount(degree: number): number {
-  if (degree === 2) return 5;
+let rffParams: { w: number[][], b: number[] } | null = null;
+const RFF_D = 200; // 200 dimensions for high-fidelity RFF approximation
+const GAMMA = 20.0; // RBF bandwidth tuned for [0, 1] coordinate range
+
+function initRFF() {
+  if (rffParams) return;
+  const rand = seededRandom(1337);
+  const w: number[][] = [];
+  const b: number[] = [];
+  const stddev = Math.sqrt(2 * GAMMA);
+  for (let i = 0; i < RFF_D; i++) {
+    const bm = boxMuller(rand);
+    w.push([bm.z0 * stddev, bm.z1 * stddev]);
+    b.push(rand() * 2 * Math.PI);
+  }
+  rffParams = { w, b };
+}
+
+// Features mapping for non-linear boundaries via polynomial kernel equivalent or RFF
+export function expandFeatures(x1: number, x2: number, kernel: string): number[] {
+  if (kernel === 'poly2') return [x1, x2, x1 * x1, x2 * x2, x1 * x2];
+  if (kernel === 'rbf') {
+    initRFF();
+    const feats = new Array(RFF_D);
+    const mult = Math.sqrt(2 / RFF_D);
+    for (let i = 0; i < RFF_D; i++) {
+      feats[i] = mult * Math.cos(rffParams!.w[i][0] * x1 + rffParams!.w[i][1] * x2 + rffParams!.b[i]);
+    }
+    return feats;
+  }
+  return [x1, x2]; // linear default
+}
+
+/** Get the number of features for a given kernel */
+export function featureCount(kernel: string): number {
+  if (kernel === 'poly2') return 5;
+  if (kernel === 'rbf') return RFF_D;
   return 2;
 }
 
 /** Initialize weights with random values (breaks symmetry) */
-export function initWeights(degree: number, seed = 42): Weights {
-  const n = featureCount(degree) + 1; // +1 for bias
+export function initWeights(kernel: string, seed = 42): Weights {
+  const n = featureCount(kernel) + 1; // +1 for bias
   const rand = seededRandom(seed);
   return Array.from({ length: n }, () => (rand() - 0.5) * 2.0);
 }
 
 // Compute f(x) = w^T x + b
-export function computeMargin(px: number, py: number, weights: Weights, degree: number): number {
+export function computeMargin(px: number, py: number, weights: Weights, kernel: string): number {
   if (weights.length === 0) return 0;
   const b = weights[0];
   const w = weights.slice(1);
-  const feats = expandFeatures(px, py, degree);
+  const feats = expandFeatures(px, py, kernel);
   let dot = b;
   for (let i = 0; i < feats.length; i++) {
     dot += w[i] * feats[i];
@@ -114,8 +150,8 @@ export function computeMargin(px: number, py: number, weights: Weights, degree: 
   return dot;
 }
 
-export function predict(px: number, py: number, weights: Weights, degree: number): SVMResult {
-  const marginDist = computeMargin(px, py, weights, degree);
+export function predict(px: number, py: number, weights: Weights, kernel: string): SVMResult {
+  const marginDist = computeMargin(px, py, weights, kernel);
   // Prob is mapped through a sigmoid just for visualizing confidence, even though SVM doesn't output true probs
   const prob = 1 / (1 + Math.exp(-marginDist));
   const cls = marginDist >= 0 ? 1 : 0;
@@ -125,7 +161,7 @@ export function predict(px: number, py: number, weights: Weights, degree: number
 // Hinge Loss: L = C * sum(max(0, 1 - y_i * f(x_i))) + 0.5 * ||w||^2
 // y_i in {-1, 1}
 // This is the standard formulation (like scikit-learn) where C multiplies the sum.
-export function computeLoss(points: Point[], weights: Weights, degree: number, C: number): number {
+export function computeLoss(points: Point[], weights: Weights, kernel: string, C: number): number {
   if (points.length === 0 || weights.length === 0) return 0;
   
   let hingeSum = 0;
@@ -133,7 +169,7 @@ export function computeLoss(points: Point[], weights: Weights, degree: number, C
 
   for (const pt of points) {
     const yTrue = pt.cls === 1 ? 1 : -1;
-    const fX = computeMargin(pt.x, pt.y, weights, degree);
+    const fX = computeMargin(pt.x, pt.y, weights, kernel);
     hingeSum += Math.max(0, 1 - yTrue * fX);
   }
 
@@ -144,7 +180,7 @@ export function computeLoss(points: Point[], weights: Weights, degree: number, C
   return C * hingeSum + 0.5 * l2;
 }
 
-export function computeGradients(points: Point[], weights: Weights, degree: number, C: number): Weights {
+export function computeGradients(points: Point[], weights: Weights, kernel: string, C: number): Weights {
   if (points.length === 0 || weights.length === 0) return weights.map(() => 0);
 
   const grads = new Array(weights.length).fill(0);
@@ -158,11 +194,11 @@ export function computeGradients(points: Point[], weights: Weights, degree: numb
   // Hinge loss gradient: d/dw (C * sum max(0, 1 - y*f(x)))
   for (const pt of points) {
     const yTrue = pt.cls === 1 ? 1 : -1;
-    const fX = computeMargin(pt.x, pt.y, weights, degree);
+    const fX = computeMargin(pt.x, pt.y, weights, kernel);
     
     if (1 - yTrue * fX > 0) {
       grads[0] -= C * yTrue; // bias gradient
-      const feats = expandFeatures(pt.x, pt.y, degree);
+      const feats = expandFeatures(pt.x, pt.y, kernel);
       for (let j = 0; j < feats.length; j++) {
         grads[j + 1] -= C * yTrue * feats[j];
       }
@@ -184,25 +220,25 @@ export function computeGradients(points: Point[], weights: Weights, degree: numb
 
 /** Run a single PEGASOS-style SGD step (mutates and returns weights) */
 export function trainStep(
-  weights: Weights, points: Point[], degree: number,
+  weights: Weights, points: Point[], kernel: string,
   C: number, lr: number, step: number
-): { weights: Weights; loss: number } {
+): { weights: Weights; loss: number; gradients: Weights } {
   // Gentle learning rate decay
   const effectiveLr = lr / (1 + step * 0.0005);
-  const grads = computeGradients(points, weights, degree, C);
+  const grads = computeGradients(points, weights, kernel, C);
   const newW = weights.map((w, i) => w - effectiveLr * grads[i]);
-  const loss = computeLoss(points, newW, degree, C);
-  return { weights: newW, loss };
+  const loss = computeLoss(points, newW, kernel, C);
+  return { weights: newW, loss, gradients: grads };
 }
 
 export interface ConfusionMatrix {
   tp: number; tn: number; fp: number; fn: number;
 }
 
-export function computeConfusionMatrix(points: Point[], weights: Weights, degree: number): ConfusionMatrix {
+export function computeConfusionMatrix(points: Point[], weights: Weights, kernel: string): ConfusionMatrix {
   let tp = 0, tn = 0, fp = 0, fn = 0;
   for (const pt of points) {
-    const { cls } = predict(pt.x, pt.y, weights, degree);
+    const { cls } = predict(pt.x, pt.y, weights, kernel);
     if (cls === 1 && pt.cls === 1) tp++;
     if (cls === 0 && pt.cls === 0) tn++;
     if (cls === 1 && pt.cls === 0) fp++;
@@ -211,7 +247,7 @@ export function computeConfusionMatrix(points: Point[], weights: Weights, degree
   return { tp, tn, fp, fn };
 }
 
-export function computeMetrics(points: Point[], weights: Weights, degree: number): MetricValue[] {
+export function computeMetrics(points: Point[], weights: Weights, kernel: string): MetricValue[] {
   if (points.length === 0 || weights.length === 0) return [
     { label: 'Accuracy', value: '—', isPrimary: true },
     { label: 'Precision', value: '—' },
@@ -219,7 +255,7 @@ export function computeMetrics(points: Point[], weights: Weights, degree: number
     { label: 'F1 Score', value: '—' },
   ];
 
-  const { tp, tn, fp, fn } = computeConfusionMatrix(points, weights, degree);
+  const { tp, tn, fp, fn } = computeConfusionMatrix(points, weights, kernel);
   const accuracy = (tp + tn) / points.length;
   const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
   const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
@@ -234,11 +270,11 @@ export function computeMetrics(points: Point[], weights: Weights, degree: number
 }
 
 /** Count support vectors — points on or inside the margin */
-export function countSupportVectors(points: Point[], weights: Weights, degree: number): number {
+export function countSupportVectors(points: Point[], weights: Weights, kernel: string): number {
   let count = 0;
   for (const pt of points) {
     const yTrue = pt.cls === 1 ? 1 : -1;
-    const m = computeMargin(pt.x, pt.y, weights, degree);
+    const m = computeMargin(pt.x, pt.y, weights, kernel);
     if (1 - yTrue * m >= 0) count++;
   }
   return count;
@@ -250,34 +286,32 @@ export interface DataStats {
   supportVectors: number;
 }
 
-export function computeDataStats(points: Point[], weights: Weights, degree: number): DataStats | null {
+export function computeDataStats(points: Point[], weights: Weights, kernel: string): DataStats | null {
   if (points.length === 0) return null;
   const n = points.length;
   const nClass0 = points.filter(p => p.cls === 0).length;
   const nClass1 = n - nClass0;
-  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
-  for (const p of points) {
-    if (p.x < xMin) xMin = p.x; if (p.x > xMax) xMax = p.x;
-    if (p.y < yMin) yMin = p.y; if (p.y > yMax) yMax = p.y;
-  }
-  const supportVectors = countSupportVectors(points, weights, degree);
-  return { n, nClass0, nClass1, xRange: [xMin, xMax], yRange: [yMin, yMax], supportVectors };
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  return {
+    n,
+    nClass0,
+    nClass1,
+    xRange: [Math.min(...xs), Math.max(...xs)],
+    yRange: [Math.min(...ys), Math.max(...ys)],
+    supportVectors: countSupportVectors(points, weights, kernel),
+  };
 }
 
-export function formatEquation(weights: Weights, degree: number): string {
-  if (weights.length === 0) return 'f(x) = ...';
+export function formatEquation(weights: Weights, kernel: string): string {
+  if (weights.length === 0) return 'f(x) = 0';
   const b = weights[0].toFixed(2);
-  const w = weights.slice(1).map(v => v.toFixed(2));
-  
-  let eq = `f(x) = ${w[0]}x₁ `;
-  eq += parseFloat(w[1]) >= 0 ? `+ ${w[1]}x₂ ` : `- ${Math.abs(parseFloat(w[1]))}x₂ `;
-  
-  if (degree === 2) {
-    eq += parseFloat(w[2]) >= 0 ? `+ ${w[2]}x₁² ` : `- ${Math.abs(parseFloat(w[2]))}x₁² `;
-    eq += parseFloat(w[3]) >= 0 ? `+ ${w[3]}x₂² ` : `- ${Math.abs(parseFloat(w[3]))}x₂² `;
-    eq += parseFloat(w[4]) >= 0 ? `+ ${w[4]}x₁x₂ ` : `- ${Math.abs(parseFloat(w[4]))}x₁x₂ `;
+  if (kernel === 'poly2') {
+    return `f(x) = ${weights[1].toFixed(2)}x₁ + ${weights[2].toFixed(2)}x₂ + ${weights[3].toFixed(2)}x₁² + ${weights[4].toFixed(2)}x₂² + ${weights[5].toFixed(2)}x₁x₂ + ${b}`;
+  } else if (kernel === 'rbf') {
+    return `f(x) = Σ wᵢ·φ(x)ᵢ + ${b} (RBF Approx)`;
+  } else {
+    // linear
+    return `f(x) = ${weights[1].toFixed(2)}x₁ + ${weights[2].toFixed(2)}x₂ + ${b}`;
   }
-  
-  eq += parseFloat(b) >= 0 ? `+ ${b}` : `- ${Math.abs(parseFloat(b))}`;
-  return eq;
 }

@@ -1,6 +1,8 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
-import { generateClassificationData, computeMetrics, predictProbabilities, computeConfusionMatrix, computeROCCurve, computeDataStats, trainNaiveBayes, type Point, type NBState } from './math';
+import { generateClassificationData, computeMetrics, predictProbabilities, predictDetailed, computeConfusionMatrix, computeROCCurve, computeDataStats, trainNaiveBayes, type Point, type NBState } from './math';
+import { usePlayground } from '../../store';
 
 export default function NaiveBayesVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -9,7 +11,7 @@ export default function NaiveBayesVisualization({
   const rocCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // State
-  const [points, setPoints] = useState<Point[]>([]);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-naive-bayes-points', []);
   const [nbState, setNbState] = useState<NBState | null>(null);
 
   // Viewport
@@ -21,7 +23,7 @@ export default function NaiveBayesVisualization({
   // Inference
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number, y: number, prob: number, cls: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number, y: number, prob: number, cls: number, logProbs?: Record<number, number>}[]>('omodels-naive-bayes-inferResults', []);
 
   // Params
   const nbType = (params.nbType as 'gaussian' | 'multinomial' | 'bernoulli') ?? 'gaussian';
@@ -47,9 +49,62 @@ export default function NaiveBayesVisualization({
     }
   }, [points, onMetricsUpdate]);
 
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0 || !nbState) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let tp = 0, tn = 0, fp = 0, fn = 0;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0);
+      const trueClass = p.cls !== undefined ? p.cls : (p.label ?? 0);
+      
+      const { probs } = predictDetailed(x, y, nbState);
+      const prob = probs[1] || 0;
+      const predClass = prob >= 0.5 ? 1 : 0;
+
+      if (trueClass === 1 && predClass === 1) tp++;
+      else if (trueClass === 0 && predClass === 0) tn++;
+      else if (trueClass === 0 && predClass === 1) fp++;
+      else fn++;
+      results.predictions.push({ features: [x, y], actual: trueClass, predicted: predClass, confidence: prob });
+    }
+    results.type = 'binary';
+    results.accuracy = (tp + tn) / total;
+    results.precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+    results.recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+    results.f1 = (results.precision + results.recall) > 0 ? 2 * results.precision * results.recall / (results.precision + results.recall) : 0;
+    results.tp = tp; results.tn = tn; results.fp = fp; results.fn = fn;
+    results.confusionMatrix = [[tn, fp], [fn, tp]];
+
+    setTestResults(results);
+  }, [testVersion, testData, nbState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) for binary classifiers
+    const pts = (importedData as any[]).map((p: any) => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean start
+    setNbState(null); setInferResults([]);
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* Generate dataset */
   useEffect(() => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     const pts = generateClassificationData(dataset, numPoints, noise);
     setPoints(pts);
     setNbState(null);
@@ -99,7 +154,7 @@ export default function NaiveBayesVisualization({
   }, []);
 
   const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } };
   }, [dataset]);
 
@@ -338,10 +393,10 @@ export default function NaiveBayesVisualization({
     const x = parseFloat(inferX);
     const y = parseFloat(inferY);
     if (isNaN(x) || isNaN(y)) return;
-    const probs = predictProbabilities(x, y, nbState);
+    const { probs, logProbs } = predictDetailed(x, y, nbState);
     const prob = probs[1] || 0;
     const cls = prob >= 0.5 ? 1 : 0;
-    setInferResults(prev => [{x, y, prob, cls}, ...prev].slice(0, 5));
+    setInferResults(prev => [{x, y, prob, cls, logProbs}, ...prev].slice(0, 5));
   }, [inferX, inferY, nbState]);
 
   const stats = useMemo(() => computeDataStats(points), [points]);
@@ -521,6 +576,58 @@ export default function NaiveBayesVisualization({
           </div>
         </div>
       )}
+
+      {/* NAIVE BAYES ALGORITHM TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">NAIVE BAYES ALGORITHM TRACKER</span>
+          <span className="viz-ctrl__subtitle">Mathematical breakdown & Bayes' Theorem flow</span>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          {/* Mathematical equations breakdown */}
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Bayes' Theorem Formulation</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Posterior: <span style={{ color: '#a855f7' }}>P(y|x) ∝ P(y) · P(x₁|y) · P(x₂|y)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Log Posterior: <span style={{ color: '#a855f7' }}>log P(y|x) ∝ log P(y) + log P(x₁|y) + log P(x₂|y)</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Likelihood Distributions ({nbType})</div>
+            {nbType === 'gaussian' && <div style={{ color: 'var(--c-on-surface)' }}>Gaussian: <span style={{ color: 'var(--c-error)' }}>P(xᵢ|y) = (1 / √(2πσ²)) · exp(-(xᵢ - μ)² / (2σ²))</span></div>}
+            {nbType === 'multinomial' && <div style={{ color: 'var(--c-on-surface)' }}>Multinomial: <span style={{ color: 'var(--c-error)' }}>log P(x|y) = x₁ · log(θ₁) + x₂ · log(θ₂)</span></div>}
+            {nbType === 'bernoulli' && <div style={{ color: 'var(--c-on-surface)' }}>Bernoulli: <span style={{ color: 'var(--c-error)' }}>P(xᵢ|y) = θᵢ if xᵢ {'>'} {binarizeThreshold} else (1 - θᵢ)</span></div>}
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Decision Rule</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Prediction: <span style={{ color: 'var(--c-primary)' }}>ŷ = argmax_y log P(y|x)</span></div>
+          </div>
+
+          {/* Real-time specific inference tracker (if available) */}
+          {inferResults.length > 0 && inferResults[0].logProbs && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              {[0, 1].map((cls) => {
+                const logP = inferResults[0].logProbs?.[cls] || 0;
+                const isWinner = inferResults[0].cls === cls;
+                return (
+                  <div key={cls} style={{ padding: '10px', background: 'var(--c-surface-variant)', border: '1px solid var(--c-panel-border)', borderLeft: `3px solid ${cls === 1 ? 'var(--c-tertiary)' : 'var(--c-primary)'}` }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '12px', color: cls === 1 ? 'var(--c-tertiary)' : 'var(--c-primary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Class {cls} Log Posterior</span>
+                      {isWinner && <span style={{ color: '#fff', background: 'var(--c-success)', padding: '2px 6px', borderRadius: '2px', fontSize: '9px' }}>WINNER</span>}
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>log P(y={cls}|x)</span>
+                      <span style={{ color: 'var(--c-error)', fontFamily: 'monospace' }}>{logP.toFixed(4)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* 5. INFERENCE */}
       <div className="viz-scroll__section viz-scroll__section--infer">

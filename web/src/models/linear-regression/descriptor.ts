@@ -144,6 +144,7 @@ const descriptor: ModelDescriptor = {
       { value: 'noisy', label: 'Noisy' },
       { value: 'outliers', label: 'Outliers' },
       { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'linear',
     params: [

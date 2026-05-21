@@ -1,7 +1,9 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateClassificationData, trainRandomForest, rfPredictSingle, rfPredictProbability, computeMetrics, computeConfusionMatrix, computeDataStats, getTreeVotes, type Point, type RFState } from './math';
 import { drawDataCanvas, drawTreeGrid, drawROCCanvas } from './drawHelpers';
+import { usePlayground } from '../../store';
 
 export default function RandomForestVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -9,7 +11,7 @@ export default function RandomForestVisualization({
   const dataRef = useRef<HTMLCanvasElement>(null);
   const gridRef = useRef<HTMLCanvasElement>(null);
   const rocRef = useRef<HTMLCanvasElement>(null);
-  const [points, setPoints] = useState<Point[]>([]);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-random-forest-points', []);
   const [rfState, setRfState] = useState<RFState | null>(null);
   const [selectedTree, setSelectedTree] = useState(0);
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
@@ -18,7 +20,7 @@ export default function RandomForestVisualization({
   const [hoverPt, setHoverPt] = useState<{ x: number; y: number; px: number; py: number } | null>(null);
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number; y: number; prob: number; cls: number; votes?: {v0: number; v1: number}}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number; y: number; prob: number; cls: number; votes?: {v0: number; v1: number}}[]>('omodels-random-forest-inferResults', []);
 
   const nEstimators = (params.nEstimators as number) ?? 10;
   const maxDepth = (params.maxDepth as number) ?? 5;
@@ -40,7 +42,59 @@ export default function RandomForestVisualization({
     ]);
   }, [points, onMetricsUpdate]);
 
-  useEffect(() => { if (dataset === 'custom') return; setPoints(generateClassificationData(dataset, numPoints, noise)); setRfState(null); setInferResults([]); }, [dataset, numPoints, noise]);
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0 || !rfState) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let tp = 0, tn = 0, fp = 0, fn = 0;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0);
+      const trueClass = p.cls !== undefined ? p.cls : (p.label ?? 0);
+      
+      const predClass = rfPredictSingle(x, y, rfState);
+      const prob = rfPredictProbability(x, y, rfState);
+
+      if (trueClass === 1 && predClass === 1) tp++;
+      else if (trueClass === 0 && predClass === 0) tn++;
+      else if (trueClass === 0 && predClass === 1) fp++;
+      else fn++;
+      results.predictions.push({ features: [x, y], actual: trueClass, predicted: predClass, confidence: prob });
+    }
+    results.type = 'binary';
+    results.accuracy = (tp + tn) / total;
+    results.precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+    results.recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+    results.f1 = (results.precision + results.recall) > 0 ? 2 * results.precision * results.recall / (results.precision + results.recall) : 0;
+    results.tp = tp; results.tn = tn; results.fp = fp; results.fn = fn;
+    results.confusionMatrix = [[tn, fp], [fn, tp]];
+
+    setTestResults(results);
+  }, [testVersion, testData, rfState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) for binary classifiers
+    const pts = (importedData as any[]).map((p: any) => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean start
+    setRfState(null); setInferResults([]);
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (dataset === 'custom' || dataset === 'import') return; setPoints(generateClassificationData(dataset, numPoints, noise)); setRfState(null); setInferResults([]); }, [dataset, numPoints, noise]);
   useEffect(() => { if (resetVersion === 0) return; setRfState(null); setInferResults([]); setSelectedTree(0); vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, [resetVersion]);
 
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
@@ -59,7 +113,7 @@ export default function RandomForestVisualization({
     vpRef.current = { xMin: mx + (vp.xMin - mx) * f, xMax: mx + (vp.xMax - mx) * f, yMin: my + (vp.yMin - my) * f, yMax: my + (vp.yMax - my) * f };
     setVpVer(v => v + 1);
   }, []);
-  const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dataset === 'custom') return; dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } }; }, [dataset]);
+  const handleMouseDown = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dataset === 'custom' || dataset === 'import') return; dragRef.current = { sx: e.clientX, sy: e.clientY, vp: { ...vpRef.current } }; }, [dataset]);
   const handleMouseMove = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
     const canvas = dataRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect(); const vp = vpRef.current;
@@ -221,7 +275,35 @@ export default function RandomForestVisualization({
         </div>
       )}
 
-      {/* 5. INFERENCE */}
+      {/* 5. RANDOM FOREST ALGORITHM TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header">
+          <span className="viz-ctrl__title">RANDOM FOREST ALGORITHM TRACKER</span>
+          <span className="viz-ctrl__subtitle">Mathematical breakdown of Ensemble Learning</span>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Bagging (Bootstrap Aggregation)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Sample Size: <span style={{ color: '#a855f7' }}>N' = N (with replacement)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>OOB Sample: <span style={{ color: 'var(--c-on-surface-variant)' }}>≈ 36.8% of data left out per tree</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Feature Subsampling</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Subset Size: <span style={{ color: 'var(--c-primary)' }}>m = {maxFeatures === 'sqrt' ? '√p' : maxFeatures === 'log2' ? 'log₂(p)' : 'p'} features</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Node Split: <span style={{ color: 'var(--c-tertiary)' }}>Best split among m random features</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Ensemble Prediction</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Probability: <span style={{ color: '#a855f7' }}>P(y=c) = (1 / T) · Σ P_t(y=c)</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Final Class: <span style={{ color: 'var(--c-error)' }}>ŷ = argmax_c P(y=c) (Majority Vote)</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. INFERENCE */}
       <div className="viz-scroll__section viz-scroll__section--infer">
         <div className="viz-ctrl__header"><span className="viz-ctrl__title">INFERENCE</span><span className="viz-ctrl__subtitle">Ensemble prediction with voting</span></div>
         <div className="viz-infer__input-row">
@@ -260,7 +342,7 @@ export default function RandomForestVisualization({
         )}
       </div>
 
-      {/* 6. DATA STATISTICS */}
+      {/* 7. DATA STATISTICS */}
       {stats && (
         <div className="viz-scroll__section viz-scroll__section--stats">
           <div className="viz-ctrl__header"><span className="viz-ctrl__title">DATA STATISTICS</span></div>

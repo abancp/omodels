@@ -1,6 +1,8 @@
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { useRef, useEffect, useState, useCallback, useMemo, type MouseEvent as RMouseEvent } from 'react';
 import type { VisualizationProps } from '../registry';
 import { generateSVMData, computeLoss, trainStep, computeMetrics, predict, formatEquation, computeConfusionMatrix, computeDataStats, computeMargin, initWeights, type Point, type Weights } from './math';
+import { usePlayground } from '../../store';
 
 export default function SVMVisualization({
   params, dataset, datasetParams, isTraining, resetVersion, onTrainingComplete, onMetricsUpdate,
@@ -10,13 +12,19 @@ export default function SVMVisualization({
   const scatterRef = useRef<HTMLDivElement>(null);
 
   // State
-  const [points, setPoints] = useState<Point[]>([]);
-  const degree = parseInt((params.degree as string) ?? '1', 10);
+  const [points, setPoints] = usePersistentState<Point[]>('omodels-svm-points', []);
+  const kernel = (params.kernel as string) ?? 'linear';
   
   const [weights, setWeights] = useState<Weights>([]);
   const [lossHistory, setLossHistory] = useState<number[]>([]);
-  const [epochTarget, setEpochTarget] = useState(0);
-  const [trained, setTrained] = useState(false);
+  const [epochTarget, setEpochTarget] = usePersistentState('omodels-svm-epochTarget', 0);
+  const [trained, setTrained] = usePersistentState('omodels-svm-trained', false);
+
+  // Real-time backpropagation tracker states
+  const [slowMode, setSlowMode] = useState(false);
+  const [gradients, setGradients] = useState<number[]>([0, 0, 0]);
+  const [gradHistories, setGradHistories] = useState<number[][]>([[], [], []]);
+  const [weightHistories, setWeightHistories] = useState<number[][]>([[], [], []]);
 
   // Viewport
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
@@ -27,7 +35,7 @@ export default function SVMVisualization({
   // Inference
   const [inferX, setInferX] = useState('0.50');
   const [inferY, setInferY] = useState('0.50');
-  const [inferResults, setInferResults] = useState<{x: number, y: number, prob: number, cls: number}[]>([]);
+  const [inferResults, setInferResults] = usePersistentState<{x: number, y: number, prob: number, cls: number}[]>('omodels-svm-inferResults', []);
 
   // Params
   const learningRate = (params.learningRate as number) ?? 0.1;
@@ -37,69 +45,133 @@ export default function SVMVisualization({
   const noise = (datasetParams.noise as number) ?? 0.15;
 
   const pushMetrics = useCallback((pts: Point[], w: Weights) => {
-    onMetricsUpdate(computeMetrics(pts, w, degree));
-  }, [degree, onMetricsUpdate]);
+    onMetricsUpdate(computeMetrics(pts, w, kernel));
+  }, [kernel, onMetricsUpdate]);
 
   const stepRef = useRef(0);
   const weightsRef = useRef<Weights>([]);
   const lossRef = useRef<number[]>([]);
 
+  // Import from store
+  const { importedData, importVersion, testData, testVersion, setTestResults } = usePlayground();
+
+  // Test dataset evaluation
+  useEffect(() => {
+    if (!testData || testData.length === 0) return;
+    const total = testData.length;
+    const results: Record<string, any> = { total, predictions: [] };
+
+    let tp = 0, tn = 0, fp = 0, fn = 0;
+    for (const p of testData) {
+      const x = p.x !== undefined ? p.x : (p.features?.[0] ?? 0);
+      const y = p.y !== undefined ? p.y : (p.features?.[1] ?? 0);
+      const trueClass = p.cls !== undefined ? p.cls : (p.label ?? 0);
+      const { cls: predClass, prob } = predict(x, y, weights, kernel);
+
+      if (trueClass === 1 && predClass === 1) tp++;
+      else if (trueClass === 0 && predClass === 0) tn++;
+      else if (trueClass === 0 && predClass === 1) fp++;
+      else fn++;
+      results.predictions.push({ features: [x, y], actual: trueClass, predicted: predClass, confidence: prob });
+    }
+    results.type = 'binary';
+    results.accuracy = (tp + tn) / total;
+    results.precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+    results.recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+    results.f1 = (results.precision + results.recall) > 0 ? 2 * results.precision * results.recall / (results.precision + results.recall) : 0;
+    results.tp = tp; results.tn = tn; results.fp = fp; results.fn = fn;
+    results.confusionMatrix = [[tn, fp], [fn, tp]];
+
+    setTestResults(results);
+  }, [testVersion, testData, weights, kernel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (dataset !== 'import' || !importedData || importedData.length === 0) return;
+    // Clamp cls to binary (0 or 1) for binary classifiers
+    const pts = (importedData as any[]).map((p: any) => ({
+      x: p.x, y: p.y, cls: p.cls >= 1 ? 1 : 0,
+    }));
+    setPoints(pts);
+    // Reset model state for clean start
+    setWeights(initWeights(kernel));
+    setLossHistory([]); setEpochTarget(0);
+    setTrained(false); setInferResults([]);
+    setGradients(new Array(kernel === "poly2" ? 6 : 3).fill(0));
+    setGradHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
+    setWeightHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
+    // Auto-zoom viewport
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.15 || 0.5, yPad = (yMax - yMin) * 0.15 || 0.5;
+    vpRef.current = { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+    setVpVer(v => v + 1);
+  }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* Generate dataset & reset model */
   useEffect(() => {
-    if (dataset === 'custom') return;
+    if (dataset === 'custom' || dataset === 'import') return;
     const pts = generateSVMData(dataset, numPoints, noise);
     setPoints(pts);
-    const w = initWeights(degree);
+    const w = initWeights(kernel);
     setWeights(w);
     weightsRef.current = w;
-    const initLoss = [computeLoss(pts, w, degree, cParam)];
+    const initLoss = [computeLoss(pts, w, kernel, cParam)];
     setLossHistory(initLoss);
     lossRef.current = initLoss;
     setEpochTarget(0);
     setTrained(false);
     setInferResults([]);
+    setGradients(new Array(kernel === "poly2" ? 6 : 3).fill(0));
+    setGradHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
+    setWeightHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
     vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
     setVpVer(v => v + 1);
     stepRef.current = 0;
-  }, [dataset, numPoints, noise, degree, cParam]);
+  }, [dataset, numPoints, noise, kernel, cParam]);
 
   /* Full reset */
   useEffect(() => {
     if (resetVersion === 0) return;
-    const w = initWeights(degree, Date.now() % 10000);
+    const w = initWeights(kernel, Date.now() % 10000);
     setWeights(w);
     weightsRef.current = w;
-    const initLoss = [computeLoss(points, w, degree, cParam)];
+    const initLoss = [computeLoss(points, w, kernel, cParam)];
     setLossHistory(initLoss);
     lossRef.current = initLoss;
     setEpochTarget(0);
     setTrained(false);
     setInferResults([]);
+    setGradients(new Array(kernel === "poly2" ? 6 : 3).fill(0));
+    setGradHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
+    setWeightHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
     vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
     setVpVer(v => v + 1);
     setHoverPt(null);
     stepRef.current = 0;
-  }, [resetVersion, points, degree, cParam]);
+  }, [resetVersion, points, kernel, cParam]);
 
   /* Training Loop (PEGASOS SGD) — uses refs to avoid stale closures */
   useEffect(() => {
     if (!isTraining || points.length === 0) return;
 
     // Initialize from current ref (avoids stale closure)
-    let w = trained ? [...weightsRef.current] : initWeights(degree, Date.now() % 10000);
+    let w = trained ? [...weightsRef.current] : initWeights(kernel, Date.now() % 10000);
     const prevLoss = [...lossRef.current];
     const target = prevLoss.length + epochs;
     setEpochTarget(target);
     stepRef.current = 0;
 
     let animId = 0;
+    let timeoutId: any = null;
 
     const loop = () => {
-      const stepsPerFrame = Math.max(1, Math.floor(epochs / 120));
+      const stepsPerFrame = slowMode ? 1 : Math.max(1, Math.floor(epochs / 120));
+      let lastGrads = [...w];
       for (let i = 0; i < stepsPerFrame && stepRef.current < epochs; i++) {
-        const result = trainStep(w, points, degree, cParam, learningRate, stepRef.current);
-        w = result.weights;
-        prevLoss.push(result.loss);
+        const result = trainStep(w, points, kernel, cParam, learningRate, stepRef.current);
+        w = result.weights || [];
+        lastGrads = result.gradients || [];
+        prevLoss.push(result.loss || 0);
         stepRef.current++;
       }
 
@@ -109,17 +181,34 @@ export default function SVMVisualization({
       setLossHistory([...prevLoss]);
       pushMetrics(points, w);
 
+      // Tracker state updates
+      setGradients(lastGrads);
+      setGradHistories(prev => (lastGrads || []).map((g, i) => [...((prev || [])[i] || []), g].slice(-50)));
+      setWeightHistories(prev => (w || []).map((v, i) => [...((prev || [])[i] || []), v].slice(-50)));
+
       if (stepRef.current < epochs) {
-        animId = requestAnimationFrame(loop);
+        if (slowMode) {
+          timeoutId = setTimeout(loop, 150);
+        } else {
+          animId = requestAnimationFrame(loop);
+        }
       } else {
         setTrained(true);
         onTrainingComplete();
       }
     };
 
-    animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
-  }, [isTraining]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (slowMode) {
+      timeoutId = setTimeout(loop, 150);
+    } else {
+      animId = requestAnimationFrame(loop);
+    }
+
+    return () => {
+      cancelAnimationFrame(animId);
+      clearTimeout(timeoutId);
+    };
+  }, [isTraining, slowMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current) return;
@@ -273,7 +362,7 @@ export default function SVMVisualization({
           for (let py = padT; py < H - padB; py += res) {
             const nx = vp.xMin + ((px - padL + res / 2) / dw) * (vp.xMax - vp.xMin);
             const ny = vp.yMax - ((py - padT + res / 2) / dh) * (vp.yMax - vp.yMin);
-            const md = computeMargin(nx, ny, weights, degree);
+            const md = computeMargin(nx, ny, weights, kernel);
             if (md >= 1) ctx.fillStyle = `${tertiary}1A`;
             else if (md > 0) ctx.fillStyle = `${tertiary}33`;
             else if (md <= -1) ctx.fillStyle = `${primary}1A`;
@@ -291,7 +380,7 @@ export default function SVMVisualization({
           let lo = vp.yMin, hi = vp.yMax, found = false;
           for (let iter = 0; iter < 30; iter++) {
             const mid = (lo + hi) / 2;
-            const m = computeMargin(nx, mid, weights, degree);
+            const m = computeMargin(nx, mid, weights, kernel);
             if (Math.abs(m) < 0.01) { found = true; lo = mid; break; }
             if (m > 0) hi = mid; else lo = mid;
           }
@@ -316,7 +405,7 @@ export default function SVMVisualization({
 
         // Support vector highlight
         const yTrue = p.cls === 1 ? 1 : -1;
-        const md = computeMargin(p.x, p.y, weights, degree);
+        const md = computeMargin(p.x, p.y, weights, kernel);
         if (1 - yTrue * md >= 0) {
           ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2);
           ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -351,7 +440,7 @@ export default function SVMVisualization({
     const ro = new ResizeObserver(() => requestAnimationFrame(render));
     ro.observe(canvas);
     return () => ro.disconnect();
-  }, [points, weights, vpVer, hoverPt, inferResults, degree, dataset]);
+  }, [points, weights, vpVer, hoverPt, inferResults, kernel, dataset]);
 
   /* Draw Loss Curve */
   useEffect(() => {
@@ -442,9 +531,9 @@ export default function SVMVisualization({
     const x = parseFloat(inferX);
     const y = parseFloat(inferY);
     if (isNaN(x) || isNaN(y)) return;
-    const { cls, prob } = predict(x, y, weights, degree);
+    const { cls, prob } = predict(x, y, weights, kernel);
     setInferResults(prev => [{x, y, prob, cls}, ...prev].slice(0, 5));
-  }, [inferX, inferY, weights, degree]);
+  }, [inferX, inferY, weights, kernel]);
 
   const handleWeightChange = useCallback((index: number, val: string) => {
     const v = parseFloat(val);
@@ -460,9 +549,9 @@ export default function SVMVisualization({
 
 
 
-  const stats = useMemo(() => computeDataStats(points, weights, degree), [points, weights, degree]);
-  const cm = useMemo(() => computeConfusionMatrix(points, weights, degree), [points, weights, degree]);
-  const equationStr = useMemo(() => formatEquation(weights, degree), [weights, degree]);
+  const stats = useMemo(() => computeDataStats(points, weights, kernel), [points, weights, kernel]);
+  const cm = useMemo(() => computeConfusionMatrix(points, weights, kernel), [points, weights, kernel]);
+  const equationStr = useMemo(() => formatEquation(weights, kernel), [weights, kernel]);
 
   return (
     <div className="viz-scroll">
@@ -483,7 +572,7 @@ export default function SVMVisualization({
         <div className="canvas__top-overlay">
            <div className="canvas__info-chip">
              <div className="canvas__dot"></div>
-             <span className="canvas__info-model">Soft-Margin SVM (Degree {degree})</span>
+             <span className="canvas__info-model">Soft-Margin SVM ({kernel})</span>
              <span className="canvas__info-sep">|</span>
              <span className="canvas__info-detail">C={cParam.toFixed(1)}</span>
            </div>
@@ -526,21 +615,26 @@ export default function SVMVisualization({
             <div className="viz-ctrl__equation" title="Decision function">{equationStr}</div>
           </div>
           <div className="viz-ctrl__sliders">
-            {weights.map((w, i) => (
+            {weights.slice(0, kernel === 'rbf' ? 4 : weights.length).map((w, i) => (
               <div className="viz-ctrl__slider-row" key={i}>
                 <label className="viz-ctrl__label">
-                  {i === 0 ? 'b (Bias)' : `w${i} ${degree === 2 && i > 2 ? (i === 3 ? '(x₁²)' : i === 4 ? '(x₂²)' : '(x₁x₂)') : ''}`}
+                  {i === 0 ? 'b (Bias)' : kernel === 'rbf' ? `w${i} (RFF)` : `w${i} ${kernel === 'poly2' && i > 2 ? (i === 3 ? '(x₁²)' : i === 4 ? '(x₂²)' : '(x₁x₂)') : ''}`}
                 </label>
                 <span className="viz-ctrl__slider-val">{w.toFixed(3)}</span>
               </div>
             ))}
-            {weights.map((w, i) => (
+            {weights.slice(0, kernel === 'rbf' ? 4 : weights.length).map((w, i) => (
               <div key={`s${i}`}>
                 <input type="range" className="control__range" min={-10} max={10} step={0.01} value={w}
                   onChange={e => handleWeightChange(i, e.target.value)} />
                 <div className="control__range-labels"><span>-10</span><span>10</span></div>
               </div>
             ))}
+            {kernel === 'rbf' && (
+              <div style={{ textAlign: 'center', fontSize: '10px', color: 'var(--c-on-surface-variant)', marginTop: '8px' }}>
+                + {weights.length - 4} more RFF weights hidden
+              </div>
+            )}
           </div>
         </div>
 
@@ -566,6 +660,123 @@ export default function SVMVisualization({
             <div style={{ background: 'var(--c-surface-variant)', padding: '10px', borderRadius: '4px', border: '1px solid var(--c-panel-border)' }}>
               <div style={{ color: 'var(--c-tertiary)', fontWeight: 'bold', fontSize: '14px' }}>{cm.tp}</div><div>TP</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BACKPROPAGATION TRACKER */}
+      <div className="viz-scroll__section viz-scroll__section--infer">
+        <div className="viz-ctrl__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span className="viz-ctrl__title">GRADIENT DESCENT TRACKER</span>
+            <span className="viz-ctrl__subtitle">Real-time sub-gradient flow & math equations (PEGASOS)</span>
+          </div>
+          <button 
+            onClick={() => setSlowMode(!slowMode)}
+            style={{ 
+              padding: '6px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', border: 'none',
+              background: slowMode ? 'var(--c-primary)' : 'var(--c-surface-variant)', 
+              color: slowMode ? '#fff' : 'var(--c-on-surface)' 
+            }}
+          >
+            {slowMode ? '🐢 SLOW TRAINING: ON' : '🐢 SLOW TRAINING: OFF'}
+          </button>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          {/* Mathematical equations breakdown */}
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--c-on-surface-variant)', background: 'rgba(0,0,0,0.2)', padding: '10px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>1. Support Vector Machine Formulation</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Model Prediction: <span style={{ color: '#a855f7' }}>f(x) = wᵀ{kernel === "linear" ? 'x' : 'Φ(x)'} + b</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Objective (Hinge Loss): <span style={{ color: '#a855f7' }}>L = C · Σ max(0, 1 - yᵢ f(xᵢ)) + ½||w||²</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>2. Sub-Gradients (PEGASOS)</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>If margin (1 - yᵢ f(xᵢ)) {'>'} 0:</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>  Bias Gradient (∂L/∂b):   <span style={{ color: 'var(--c-error)' }}>∂L/∂b = -C · Σ yᵢ</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>  Weight Gradient (∂L/∂wⱼ): <span style={{ color: 'var(--c-error)' }}>∂L/∂wⱼ = wⱼ - C · Σ yᵢ {kernel === "linear" ? 'xᵢⱼ' : 'Φ(x)ᵢⱼ'}</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Else (margin ≤ 0):</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>  Bias Gradient (∂L/∂b):   <span style={{ color: 'var(--c-error)' }}>∂L/∂b = 0</span></div>
+            <div style={{ color: 'var(--c-on-surface)' }}>  Weight Gradient (∂L/∂wⱼ): <span style={{ color: 'var(--c-error)' }}>∂L/∂wⱼ = wⱼ</span></div>
+            
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+            
+            <div style={{ color: 'var(--c-on-surface)', marginBottom: '4px', fontWeight: 'bold' }}>3. Parameter Gradient Descent Updates</div>
+            <div style={{ color: 'var(--c-on-surface)' }}>Update Parameter j: <span style={{ color: 'var(--c-primary)' }}>wⱼ ← wⱼ - η · (∂L/∂wⱼ)</span></div>
+          </div>
+
+          {/* Real-time sparklines and stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+            {weights.slice(0, kernel === 'rbf' ? 6 : weights.length).map((w, i) => {
+              const label = i === 0 ? 'Bias (b)' : 
+                            kernel === 'linear' ? (i === 1 ? 'Weight 1 (w₁)' : 'Weight 2 (w₂)') :
+                            kernel === 'poly2' ? ['Bias (b)', 'Weight 1 (w₁)', 'Weight 2 (w₂)', 'Weight 3 (w₃)', 'Weight 4 (w₄)', 'Weight 5 (w₅)'][i] :
+                            `RFF Weight ${i}`;
+              
+              const gradLabel = i === 0 ? '∂L/∂b' : 
+                                kernel === 'linear' ? (i === 1 ? '∂L/∂w₁' : '∂L/∂w₂') :
+                                kernel === 'poly2' ? ['∂L/∂b', '∂L/∂w₁', '∂L/∂w₂', '∂L/∂w₃', '∂L/∂w₄', '∂L/∂w₅'][i] :
+                                `∂L/∂w${i}`;
+              
+              const gradHistory = gradHistories[i] || [];
+              const weightHistory = weightHistories[i] || [];
+              return (
+                <div key={i} style={{ padding: '10px', background: 'var(--c-surface-variant)', border: '1px solid var(--c-panel-border)' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '12px', color: i === 0 ? 'var(--c-tertiary)' : 'var(--c-primary)', marginBottom: '8px' }}>{label}</div>
+                  
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>Gradient ({gradLabel})</span>
+                      <span style={{ color: 'var(--c-error)', fontFamily: 'monospace' }}>{(gradients[i] || 0).toFixed(4)}</span>
+                    </div>
+                    <div style={{ height: '28px', background: 'rgba(255,255,255,0.03)', overflow: 'hidden', position: 'relative' }}>
+                      {gradHistory.length > 1 ? (
+                        <svg width="100%" height="100%" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
+                          <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" strokeDasharray="2,2" />
+                          <path 
+                            d={gradHistory.map((v, idx) => {
+                              const x = (idx / (gradHistory.length - 1)) * 100;
+                              const max = Math.max(...gradHistory.map(Math.abs), 0.01);
+                              const y = 12 - (v / max) * 12;
+                              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                            }).join(' ')} 
+                            fill="none" stroke="var(--c-error)" strokeWidth="1.5" strokeLinejoin="round" 
+                          />
+                        </svg>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '9px', opacity: 0.3 }}>No history</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>
+                      <span>Weight Value</span>
+                      <span style={{ color: 'var(--c-primary)', fontFamily: 'monospace' }}>{w.toFixed(4)}</span>
+                    </div>
+                    <div style={{ height: '28px', background: 'rgba(255,255,255,0.03)', overflow: 'hidden', position: 'relative' }}>
+                      {weightHistory.length > 1 ? (
+                        <svg width="100%" height="100%" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
+                          <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" strokeDasharray="2,2" />
+                          <path 
+                            d={weightHistory.map((v, idx) => {
+                              const x = (idx / (weightHistory.length - 1)) * 100;
+                              const max = Math.max(...weightHistory.map(Math.abs), 1);
+                              const y = 12 - (v / max) * 12;
+                              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                            }).join(' ')} 
+                            fill="none" stroke="var(--c-primary)" strokeWidth="1.5" strokeLinejoin="round" 
+                          />
+                        </svg>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '9px', opacity: 0.3 }}>No history</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

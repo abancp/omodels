@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import Icon from '../common/Icon';
-import { usePlayground } from '../../store';
+import { PlaygroundContext } from '../../store/PlaygroundStore';
 import { getCategories, getModelsByCategory } from '../../models';
 
 export default function SideNavBar() {
-  const { activeModelId, setActiveModel, mode, setMode } = usePlayground();
+  const pgCtx = useContext(PlaygroundContext);
+  const activeModelId = pgCtx?.activeModelId ?? '';
+  const setActiveModel = pgCtx?.setActiveModel ?? (() => {});
+  const mode = pgCtx?.mode ?? 'basic';
+  const setMode = pgCtx?.setMode ?? (() => {});
   const categories = getCategories();
   const [expandedCats, setExpandedCats] = useState<Set<string>>(
     () => new Set(categories.map((c) => c.id))

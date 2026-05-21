@@ -26,6 +26,7 @@ const descriptor: ModelDescriptor = {
       { value: 'blobs', label: 'Blobs' }, { value: 'moons', label: 'Moons' },
       { value: 'circles', label: 'Circles' }, { value: 'xor', label: 'XOR' },
       { value: 'spiral', label: 'Spiral' }, { value: 'custom', label: 'Custom', icon: 'edit' },
+      { value: 'import', label: 'Import', icon: 'upload' },
     ],
     defaultDataset: 'moons',
     params: [
