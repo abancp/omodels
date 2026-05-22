@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════
    Data Studio — React Context Store
    ═══════════════════════════════════════ */
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import Papa from 'papaparse';
 import type { DataState, Transform, TransformKind, SplitConfig, VizType } from './types';
 import { parseData, detectSchema, computeStats, applyTransform } from './engine';
@@ -220,6 +220,15 @@ export const DataStudioProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dispatch({ type: 'SET_LOADING', active: false, message: '' });
     }, 500);
   }, [state.working, state.splitConfig]);
+
+  useEffect(() => {
+    (window as any).isDataStudioDirty = () => {
+      return state.raw && state.raw.length > 0;
+    };
+    return () => {
+      delete (window as any).isDataStudioDirty;
+    };
+  }, [state.raw]);
 
   return (
     <DataStudioContext.Provider value={{ state, dispatch, importFile, addTransform, doExport, doSplit }}>

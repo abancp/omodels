@@ -5,7 +5,7 @@
  * in its config. Data flows only through connections.
  */
 
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import type { Pipeline, PipelineNode, PipelineEdge, NodeState } from './PipelineTypes';
 import { CONNECTION_RULES } from './PipelineTypes';
 import { validatePipeline, executePipeline, topologicalSort, parseCSV, runInference } from './PipelineEngine';
@@ -288,6 +288,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }, nodeIdCounter);
     setPipeline({ ...p, state: 'draft' });
   }, []);
+
+  useEffect(() => {
+    (window as any).isPipelineDirty = () => {
+      return pipeline.nodes.length > 0;
+    };
+    return () => {
+      delete (window as any).isPipelineDirty;
+    };
+  }, [pipeline.nodes]);
 
   return (
     <PipelineContext.Provider value={{

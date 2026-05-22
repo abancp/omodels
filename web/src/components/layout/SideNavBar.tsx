@@ -25,12 +25,6 @@ export default function SideNavBar() {
 
   return (
     <aside className="sidenav" id="sidenav">
-      {/* Header */}
-      <div className="sidenav__header">
-        <div className="sidenav__title">Models</div>
-        <div className="sidenav__version">v2.4.0-stable</div>
-      </div>
-
       {/* Model tree */}
       <nav className="sidenav__tree">
         {categories.map((cat) => {

@@ -320,6 +320,15 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
     setTestVersion(v => v + 1);
   }, []);
 
+  useEffect(() => {
+    (window as any).isPlaygroundDirty = () => {
+      return isTraining || importedData !== null || testData !== null || checkIfModelTrained(activeModelId);
+    };
+    return () => {
+      delete (window as any).isPlaygroundDirty;
+    };
+  }, [isTraining, importedData, testData, activeModelId]);
+
   return (
     <PlaygroundContext.Provider
       value={{

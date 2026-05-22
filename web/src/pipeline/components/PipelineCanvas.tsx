@@ -653,7 +653,7 @@ export default function PipelineCanvas() {
       {/* Zoom controls */}
       <div className="pipeline-canvas__controls">
         <button className="pipeline-canvas__ctrl-btn" onClick={() => setZoom(z => Math.min(2, z * 1.2))} title="Zoom in">+</button>
-        <button className="pipeline-canvas__ctrl-btn" onClick={() => setZoom(1)} title="Reset zoom">{Math.round(zoom * 100)}%</button>
+        <button className="pipeline-canvas__ctrl-btn pipeline-canvas__ctrl-btn--percent" onClick={() => setZoom(1)} title="Reset zoom">{Math.round(zoom * 100)}%</button>
         <button className="pipeline-canvas__ctrl-btn" onClick={() => setZoom(z => Math.max(0.3, z / 1.2))} title="Zoom out">−</button>
         <button className="pipeline-canvas__ctrl-btn" onClick={() => { setPan({ x: 60, y: 60 }); setZoom(1); }} title="Fit">⊡</button>
       </div>

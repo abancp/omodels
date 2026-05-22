@@ -25,7 +25,7 @@ export default function TopNavBar({ onSearchClick, activeView, onViewChange }: T
   return (
     <header className="topnav" id="topnav">
       <div className="topnav__left">
-        <span className="topnav__brand">omodels</span>
+        <span className="topnav__brand">Omodels</span>
         <nav className="topnav__tabs">
           {NAV_TABS.map((tab) => (
             <div

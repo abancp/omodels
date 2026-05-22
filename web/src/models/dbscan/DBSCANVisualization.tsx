@@ -131,6 +131,16 @@ export default function DBSCANVisualization({
   }, [resetVersion]);
 
   useEffect(() => { setDbState(null); }, [eps, minPts, metric]); // reset if params change
+
+  // Clear persistent state on unmount so default data is loaded next time
+  useEffect(() => {
+    return () => {
+      localStorage.removeItem('omodels-dbscan-points');
+      localStorage.removeItem('omodels-dbscan-dbState');
+      localStorage.removeItem('omodels-dbscan-inferResults');
+    };
+  }, []);
+
   
   // Mouse handlers
   const handleDataClick = useCallback((e: RMouseEvent<HTMLCanvasElement>) => { if (dragRef.current) return; const c = dataRef.current; if (!c) return; const r = c.getBoundingClientRect(); const vp = vpRef.current; setPoints(prev => [...prev, { x: vp.xMin + ((e.clientX - r.left) / r.width) * (vp.xMax - vp.xMin), y: vp.yMax - ((e.clientY - r.top) / r.height) * (vp.yMax - vp.yMin) }]); setDbState(null); }, []);

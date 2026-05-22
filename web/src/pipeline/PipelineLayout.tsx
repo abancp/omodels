@@ -2,7 +2,7 @@
  * PipelineLayout — main layout for the Pipeline builder page
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { PipelineProvider, usePipeline } from './PipelineStore';
 import NodePalette from './components/NodePalette';
 import PipelineCanvas from './components/PipelineCanvas';
@@ -25,6 +25,25 @@ function PipelineWorkspace({ activeView, onViewChange }: PipelineLayoutProps) {
   const [editingName, setEditingName] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        savePipeline();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+        e.preventDefault();
+        fileRef.current?.click();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(p => !p);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [savePipeline]);
 
   const handleLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
