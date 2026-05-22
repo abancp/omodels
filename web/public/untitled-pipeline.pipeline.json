@@ -1,0 +1,143 @@
+{
+  "id": "pipeline_1779450093230",
+  "name": "Untitled Pipeline",
+  "nodes": [
+    {
+      "id": "node_1",
+      "family": "dataset",
+      "type": "Dataset",
+      "label": "Dataset",
+      "config": {
+        "targetColumn": "Exam_Score",
+        "taskType": "regression",
+        "csvFilename": "exam_new.csv",
+        "csvHeaders": [
+          "Hours_Studied",
+          "Exam_Score"
+        ],
+        "csvRowCount": 20
+      },
+      "state": "trained",
+      "position": {
+        "x": 164,
+        "y": 55
+      }
+    },
+    {
+      "id": "node_2",
+      "family": "split",
+      "type": "TrainTestSplit",
+      "label": "Train/Test Split",
+      "config": {
+        "testSplit": 0.2,
+        "stratified": true,
+        "shuffle": true
+      },
+      "state": "trained",
+      "position": {
+        "x": 401,
+        "y": 15
+      }
+    },
+    {
+      "id": "node_3",
+      "family": "preprocessor",
+      "type": "MinMaxScaler",
+      "label": "MinMax Scaler",
+      "config": {
+        "type": "MinMaxScaler",
+        "params": {},
+        "targetColumns": [
+          "Hours_Studied",
+          "Exam_Score"
+        ]
+      },
+      "state": "trained",
+      "position": {
+        "x": 672,
+        "y": 17
+      },
+      "fittedParams": {
+        "mins": [
+          2,
+          42
+        ],
+        "maxs": [
+          20,
+          119
+        ]
+      }
+    },
+    {
+      "id": "node_4",
+      "family": "model",
+      "type": "LinearRegression",
+      "label": "Linear Regression",
+      "config": {
+        "type": "LinearRegression",
+        "params": {
+          "learningRate": 0.01,
+          "epochs": 1000,
+          "optimizer": "adam",
+          "batchSize": 32
+        }
+      },
+      "state": "trained",
+      "position": {
+        "x": 425,
+        "y": 142
+      }
+    },
+    {
+      "id": "node_5",
+      "family": "evaluation",
+      "type": "RegressionMetrics",
+      "label": "Regression Metrics",
+      "config": {
+        "type": "RegressionMetrics"
+      },
+      "state": "trained",
+      "position": {
+        "x": 693,
+        "y": 159
+      },
+      "metrics": {
+        "mse": 0.00009149907217307367,
+        "rmse": 0.009565514736441195,
+        "mae": 0.009048947423406246,
+        "r2": 0.9991832924367119
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "source": "node_1",
+      "target": "node_2"
+    },
+    {
+      "id": "edge_2",
+      "source": "node_2",
+      "target": "node_3"
+    },
+    {
+      "id": "edge_3",
+      "source": "node_3",
+      "target": "node_4"
+    },
+    {
+      "id": "edge_4",
+      "source": "node_4",
+      "target": "node_5"
+    }
+  ],
+  "state": "trained",
+  "createdAt": "2026-05-22T11:41:33.230Z",
+  "updatedAt": "2026-05-22T11:41:33.231Z",
+  "metrics": {
+    "mse": 0.00009149907217307367,
+    "rmse": 0.009565514736441195,
+    "mae": 0.009048947423406246,
+    "r2": 0.9991832924367119
+  }
+}
