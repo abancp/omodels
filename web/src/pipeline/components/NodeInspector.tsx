@@ -293,7 +293,7 @@ export const THEORY_CATALOG: Record<string, TheoryInfo> = {
 };
 
 export default function NodeInspector() {
-  const { pipeline, selectedNodeId, updateNodeConfig, removeNode, csvData, loadCSV, nodeResults, featureNames, testPrediction } = usePipeline();
+  const { pipeline, selectedNodeId, updateNodeConfig, removeNode, loadCSVToNode, nodeResults, featureNames, rawFeatureNames, testPrediction } = usePipeline();
   const node = pipeline.nodes.find(n => n.id === selectedNodeId) ?? null;
   const [tab, setTab] = useState<Tab>('config');
 
@@ -318,10 +318,9 @@ export default function NodeInspector() {
     }
   }, [selectedNodeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!node) return <InspectorEmpty csvData={csvData} loadCSV={loadCSV} pipeline={pipeline} />;
+  if (!node) return <InspectorEmpty pipeline={pipeline} />;
 
   const result = nodeResults[node.id];
-  const isTrained = pipeline.state === 'trained';
 
   return (
     <div className="pipeline-inspector">
@@ -343,21 +342,40 @@ export default function NodeInspector() {
       </div>
 
       {tab === 'config' && (() => {
-        const dsNode = pipeline.nodes.find(n => n.family === 'datasource');
-        const targetCol = (dsNode?.config as any)?.targetColumn || (csvData?.headers ? csvData.headers[csvData.headers.length - 1] : '');
-        const allHeaders = csvData?.headers || [];
-        const featureOnly = allHeaders.filter((h: string) => h !== targetCol);
-        
-        // Use snapshot columns if available, else fallback to CSV headers
-        // Preprocessors: all columns | Models: feature columns only
+        // Trace upstream through edges to find the source Dataset node
+        const findUpstreamDataset = (nodeId: string, visited = new Set<string>()): any | null => {
+          if (visited.has(nodeId)) return null;
+          visited.add(nodeId);
+          const n = pipeline.nodes.find(nd => nd.id === nodeId);
+          if (!n) return null;
+          if (n.family === 'dataset') return n;
+          // Walk incoming edges
+          const inEdges = pipeline.edges.filter(e => e.target === nodeId);
+          for (const edge of inEdges) {
+            const found = findUpstreamDataset(edge.source, visited);
+            if (found) return found;
+          }
+          return null;
+        };
+        const isDataset = node.family === 'dataset';
+        const upstreamDS = isDataset ? node : findUpstreamDataset(node.id);
+        const dsCfg = upstreamDS?.config as any;
+        const allColumns: string[] = dsCfg?.csvHeaders || [];
+        const targetCol = dsCfg?.targetColumn || '';
+
+        // For preprocessors: show ALL columns (including target) so user can choose
+        // For models: show only feature columns (exclude target)
         const snapshotCols = result?.inputSnapshot?.featureNames ?? [];
-        const activeFeatures = node.family === 'preprocessor'
-          ? (snapshotCols.length > 0 ? snapshotCols : allHeaders)
-          : (snapshotCols.length > 0
-              ? snapshotCols.filter((n: string) => n !== targetCol)
-              : (featureNames.length ? featureNames : featureOnly));
-          
-        return <NodeConfig node={node} updateNodeConfig={updateNodeConfig} csvData={csvData} removeNode={removeNode} featureNames={activeFeatures} />;
+        let activeFeatures: string[];
+        if (snapshotCols.length > 0) {
+          activeFeatures = node.family === 'preprocessor' ? snapshotCols : snapshotCols.filter((n: string) => n !== targetCol);
+        } else if (allColumns.length > 0) {
+          activeFeatures = node.family === 'preprocessor' ? allColumns : allColumns.filter((h: string) => h !== targetCol);
+        } else {
+          activeFeatures = featureNames.length ? featureNames : [];
+        }
+
+        return <NodeConfig node={node} updateNodeConfig={updateNodeConfig} loadCSVToNode={loadCSVToNode} featureNames={activeFeatures} targetColumn={targetCol} />;
       })()}
 
       {tab === 'preview' && (
@@ -366,8 +384,8 @@ export default function NodeInspector() {
 
       {tab === 'interface' && (
         <NodeInterface
-          isTrained={isTrained}
-          featureNames={featureNames}
+          isTrained={pipeline.state === 'trained'}
+          featureNames={rawFeatureNames}
           testPrediction={testPrediction}
           pipeline={pipeline}
         />
@@ -401,15 +419,7 @@ function NodeHeader({ node, removeNode }: { node: PipelineNode; removeNode: (id:
 
 // ── Empty State ───────────────────────────────────────────────────────────────
 
-function InspectorEmpty({ csvData, loadCSV, pipeline }: any) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => loadCSV(ev.target?.result as string, file.name);
-    reader.readAsText(file);
-  };
+function InspectorEmpty({ pipeline }: any) {
   const allMetrics = pipeline.metrics ?? {};
 
   return (
@@ -420,25 +430,12 @@ function InspectorEmpty({ csvData, loadCSV, pipeline }: any) {
       </div>
 
       <div className="pipeline-inspector__section">
-        <div className="pipeline-inspector__section-title">Dataset</div>
-        <div
-          className={`pipeline-inspector__drop-zone ${csvData ? 'pipeline-inspector__drop-zone--loaded' : ''}`}
-          onClick={() => fileRef.current?.click()}
-        >
-          <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
-          {csvData ? (
-            <>
-              <Icon name="check_circle" size={20} style={{ color: '#10b981' }} />
-              <div className="pipeline-inspector__drop-loaded">{csvData.rowCount} rows · {csvData.headers.length} cols</div>
-              <div className="pipeline-inspector__drop-hint">{csvData.headers.slice(0, 4).join(', ')}{csvData.headers.length > 4 ? '…' : ''}</div>
-            </>
-          ) : (
-            <>
-              <Icon name="upload_file" size={24} />
-              <div className="pipeline-inspector__drop-label">Upload CSV</div>
-              <div className="pipeline-inspector__drop-hint">Click to browse</div>
-            </>
-          )}
+        <div className="pipeline-inspector__section-title">Quick Start</div>
+        <div style={{ fontSize: 10, color: 'var(--c-on-surface-variant)', lineHeight: 1.6, opacity: 0.7 }}>
+          1. Drag a <strong>Dataset</strong> node onto the canvas<br/>
+          2. Upload a CSV file in the Dataset node config<br/>
+          3. Add preprocessors and models<br/>
+          4. Connect nodes and click <strong>Run Pipeline</strong>
         </div>
       </div>
 
@@ -461,56 +458,25 @@ function InspectorEmpty({ csvData, loadCSV, pipeline }: any) {
 
 // ── Config Tab ────────────────────────────────────────────────────────────────
 
-function NodeConfig({ node, updateNodeConfig, csvData, removeNode, featureNames }: {
+function NodeConfig({ node, updateNodeConfig, loadCSVToNode, featureNames, targetColumn }: {
   node: PipelineNode; updateNodeConfig: (id: string, cfg: any) => void;
-  csvData: any; removeNode: (id: string) => void; featureNames: string[];
+  loadCSVToNode: (nodeId: string, text: string, filename: string) => void;
+  featureNames: string[]; targetColumn?: string;
 }) {
   const catalog = getCatalogEntry(node.family, node.type);
   const cfg = node.config as any;
   const fileRef = useRef<HTMLInputElement>(null);
-  const { pipeline } = usePipeline();
 
   const set = useCallback((key: string, value: any) => updateNodeConfig(node.id, { [key]: value }), [node.id, updateNodeConfig]);
   const setParam = useCallback((key: string, value: any) => {
     updateNodeConfig(node.id, { params: { ...(cfg.params ?? {}), [key]: value } });
   }, [node.id, cfg.params, updateNodeConfig]);
 
-  const handleOmLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const payload = JSON.parse(ev.target?.result as string);
-        
-        // Map playground IDs to pipeline Types
-        const mappedType = {
-           'mlp': 'MLPClassifier', 'perceptron': 'Perceptron',
-           'linear-regression': 'LinearRegression', 'logistic-regression': 'LogisticRegression',
-           'svm': 'SVM', 'knn': 'KNN', 'naive-bayes': 'NaiveBayes', 'kmeans': 'KMeans',
-           'decision-tree': 'DecisionTree', 'random-forest': 'RandomForest', 'gradient-boosting': 'GradientBoosting'
-        }[payload.activeModelId as string] || payload.activeModelId;
-
-        let numInputs = payload.datasetParams?.numInputs || 0;
-        if (!numInputs && payload.localState?.[`omodels-${payload.activeModelId}-weights`]) {
-           try {
-              const weights = JSON.parse(payload.localState[`omodels-${payload.activeModelId}-weights`]);
-              if (Array.isArray(weights) && weights.length > 0) numInputs = Array.isArray(weights[0]) ? weights[0].length : weights.length;
-           } catch(e) {}
-        }
-
-        updateNodeConfig(node.id, {
-          source: 'loaded',
-          loadedModelFile: file.name,
-          loadedModelId: payload.activeModelId,
-          fittedParams: payload.localState,
-          type: mappedType,
-          params: payload.params || payload.hyperparams || cfg.params,
-          mode: payload.localState && Object.keys(payload.localState).length > 0 ? 'frozen' : 'retrain',
-          trainingSchema: numInputs > 0 ? { shape: [0, numInputs] } : undefined
-        });
-      } catch { alert('Invalid .om file'); }
-    };
+    reader.onload = ev => loadCSVToNode(node.id, ev.target?.result as string, file.name);
     reader.readAsText(file);
   };
 
@@ -525,44 +491,64 @@ function NodeConfig({ node, updateNodeConfig, csvData, removeNode, featureNames 
         {node.state.charAt(0).toUpperCase() + node.state.slice(1)}
       </div>
 
-      {/* DATA SOURCE */}
-      {node.family === 'datasource' && (
+      {/* DATASET NODE — Upload CSV + Configure */}
+      {node.family === 'dataset' && (
         <div className="pipeline-inspector__section">
-          <div className="pipeline-inspector__section-title">Configuration</div>
-          <Field label="Target Column" tooltip="Select the label you want downstream models to predict.">
-            {csvData?.headers?.length > 0 ? (
-              <select className="pipeline-inspector__select" value={cfg.targetColumn ?? ''} onChange={e => set('targetColumn', e.target.value)}>
-                <option value="">Select target…</option>
-                {csvData.headers.map((h: string) => <option key={h} value={h}>{h}</option>)}
-              </select>
+          <div className="pipeline-inspector__section-title">Dataset Upload</div>
+          <div
+            className={`pipeline-inspector__drop-zone ${cfg.csvFilename ? 'pipeline-inspector__drop-zone--loaded' : ''}`}
+            onClick={() => fileRef.current?.click()}
+          >
+            <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVUpload} style={{ display: 'none' }} />
+            {cfg.csvFilename ? (
+              <>
+                <Icon name="check_circle" size={20} style={{ color: '#10b981' }} />
+                <div className="pipeline-inspector__drop-loaded">{cfg.csvRowCount ?? 0} rows · {cfg.csvHeaders?.length ?? 0} cols</div>
+                <div className="pipeline-inspector__drop-hint">{cfg.csvFilename}</div>
+              </>
             ) : (
-              <input className="pipeline-inspector__input" placeholder="e.g. label" value={cfg.targetColumn ?? ''} onChange={e => set('targetColumn', e.target.value)} />
+              <>
+                <Icon name="upload_file" size={24} />
+                <div className="pipeline-inspector__drop-label">Upload CSV</div>
+                <div className="pipeline-inspector__drop-hint">Click to browse</div>
+              </>
             )}
-          </Field>
-          <Field label="Task Type" tooltip="Auto-detect classification vs regression.">
-            <select className="pipeline-inspector__select" value={cfg.taskType ?? 'auto'} onChange={e => set('taskType', e.target.value)}>
-              <option value="auto">Auto-detect</option>
-              <option value="classification">Classification</option>
-              <option value="regression">Regression</option>
-            </select>
-          </Field>
-          <Field label="Split Mode" tooltip="Divide into Train/Test subsets or use Cross Validation.">
-            <select className="pipeline-inspector__select" value={cfg.splitMode ?? 'holdout'} onChange={e => set('splitMode', e.target.value)}>
-              <option value="holdout">Holdout</option>
-              <option value="kfold">K-Fold CV</option>
-            </select>
-          </Field>
-          {cfg.splitMode === 'kfold' ? (
-            <Field label={`K Folds: ${cfg.kFolds ?? 5}`} tooltip="Number of cross-validation slices.">
-              <input type="range" min={2} max={20} step={1} value={cfg.kFolds ?? 5} onChange={e => set('kFolds', +e.target.value)} className="pipeline-inspector__slider" />
-            </Field>
-          ) : (
-            <Field label={`Test Split: ${Math.round((cfg.testSplit ?? 0.2) * 100)}%`} tooltip="Proportion of the dataset kept for evaluating.">
-              <input type="range" min={0.05} max={0.5} step={0.05} value={cfg.testSplit ?? 0.2} onChange={e => set('testSplit', +e.target.value)} className="pipeline-inspector__slider" />
-            </Field>
+          </div>
+
+          {cfg.csvHeaders?.length > 0 && (
+            <>
+              <div style={{ marginTop: 12 }} />
+              <div className="pipeline-inspector__section-title">Configuration</div>
+              <Field label="Target Column" tooltip="The column models will predict.">
+                <select className="pipeline-inspector__select" value={cfg.targetColumn ?? ''} onChange={e => set('targetColumn', e.target.value)}>
+                  <option value="">Select target…</option>
+                  {cfg.csvHeaders.map((h: string) => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </Field>
+              <Field label="Task Type" tooltip="Auto-detect classification vs regression.">
+                <select className="pipeline-inspector__select" value={cfg.taskType ?? 'auto'} onChange={e => set('taskType', e.target.value)}>
+                  <option value="auto">Auto-detect</option>
+                  <option value="classification">Classification</option>
+                  <option value="regression">Regression</option>
+                </select>
+              </Field>
+            </>
           )}
-          <Field label="Stratified" tooltip="Ensures class proportions are balanced across the splits.">
+        </div>
+      )}
+
+      {/* SPLIT NODE */}
+      {node.family === 'split' && (
+        <div className="pipeline-inspector__section">
+          <div className="pipeline-inspector__section-title">Split Configuration</div>
+          <Field label={`Test Split: ${Math.round((cfg.testSplit ?? 0.2) * 100)}%`} tooltip="Proportion of the dataset kept for testing.">
+            <input type="range" min={0.05} max={0.5} step={0.05} value={cfg.testSplit ?? 0.2} onChange={e => set('testSplit', +e.target.value)} className="pipeline-inspector__slider" />
+          </Field>
+          <Field label="Stratified" tooltip="Ensures class proportions are balanced across splits.">
             <Toggle checked={cfg.stratified ?? true} onChange={v => set('stratified', v)} />
+          </Field>
+          <Field label="Shuffle" tooltip="Randomly shuffle data before splitting.">
+            <Toggle checked={cfg.shuffle !== false} onChange={v => set('shuffle', v)} />
           </Field>
         </div>
       )}
@@ -604,40 +590,26 @@ function NodeConfig({ node, updateNodeConfig, csvData, removeNode, featureNames 
           )}
           <div className="pipeline-inspector__section">
             <div className="pipeline-inspector__section-title">Parameters</div>
-          {node.type === 'PCA' && <>
-            <Field label={`Components: ${cfg.params.nComponents ?? 2}`} tooltip="Number of Principal Components to project features onto.">
-              <input type="range" min={1} max={20} step={1} value={cfg.params.nComponents ?? 2} onChange={e => setParam('nComponents', +e.target.value)} className="pipeline-inspector__slider" />
-            </Field>
-            <Field label="Whiten" tooltip="Ensures components have unit variance."><Toggle checked={cfg.params.whiten ?? false} onChange={v => setParam('whiten', v)} /></Field>
-          </>}
           {node.type === 'SimpleImputer' && (
             <Field label="Strategy" tooltip="Statistical strategy used to calculate missing numbers.">
               <select className="pipeline-inspector__select" value={cfg.params.strategy ?? 'mean'} onChange={e => setParam('strategy', e.target.value)}>
                 <option value="mean">Mean (Average)</option>
                 <option value="median">Median (Middle value)</option>
-                <option value="most_frequent">Most Frequent (Mode)</option>
               </select>
             </Field>
           )}
-          {node.type === 'SelectKBest' && (
-            <Field label={`K Features: ${cfg.params.k ?? 10}`} tooltip="Keep K features with highest statistical variance.">
-              <input type="range" min={1} max={50} step={1} value={cfg.params.k ?? 10} onChange={e => setParam('k', +e.target.value)} className="pipeline-inspector__slider" />
+          {node.type === 'OneHotEncoder' && (
+            <Field label="Drop First" tooltip="Drop the first encoded column to prevent multicollinearity.">
+              <Toggle checked={cfg.params.dropFirst ?? false} onChange={v => setParam('dropFirst', v)} />
             </Field>
           )}
-          {node.type === 'PolynomialFeatures' && <>
-            <Field label={`Degree: ${cfg.params.degree ?? 2}`} tooltip="Create combinations up to degree D.">
-              <input type="range" min={2} max={4} step={1} value={cfg.params.degree ?? 2} onChange={e => setParam('degree', +e.target.value)} className="pipeline-inspector__slider" />
-            </Field>
-            <Field label="Interaction Only" tooltip="Exclude pure square terms."><Toggle checked={cfg.params.interactionOnly ?? false} onChange={v => setParam('interactionOnly', v)} /></Field>
-          </>}
           </div>
         </>
       )}
 
       {/* MODEL */}
       {node.family === 'model' && (() => {
-        const dsNode = pipeline.nodes.find(n => n.family === 'datasource');
-        const targetCol = (dsNode?.config as any)?.targetColumn || 'Not Set';
+        const tCol = targetColumn || 'Not Set';
         
         return (
           <>
@@ -647,7 +619,7 @@ function NodeConfig({ node, updateNodeConfig, csvData, removeNode, featureNames 
                 <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center' }}>
                    <strong style={{ color: '#f59e0b', width: 65, flexShrink: 0 }}>Predicts (y):</strong> 
                    <span style={{ padding: '2px 6px', background: 'rgba(245, 158, 11, 0.1)', color: '#fcd34d', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 4, fontFamily: 'monospace' }}>
-                     {targetCol}
+                     {tCol}
                    </span>
                 </div>
                 <div style={{ display: 'flex' }}>
@@ -684,56 +656,7 @@ function NodeConfig({ node, updateNodeConfig, csvData, removeNode, featureNames 
             ))}
           </div>
 
-          <div className="pipeline-inspector__section">
-            <div className="pipeline-inspector__section-title">Model Source</div>
-            {cfg.source === 'loaded' ? (
-              <>
-                <button className="pipeline-inspector__upload-btn" onClick={() => fileRef.current?.click()}>
-                  <Icon name="upload_file" size={14} />
-                  {cfg.loadedModelFile ? `Loaded: ${cfg.loadedModelFile}` : 'Load .om file'}
-                </button>
-                <input ref={fileRef} type="file" accept=".om" onChange={handleOmLoad} style={{ display: 'none' }} />
-                {cfg.loadedModelId && (
-                  <>
-                    <div style={{ fontSize: 9, opacity: 0.8, marginBottom: 8, marginTop: 8, padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--c-primary)', marginBottom: 4 }}>Import Successful</div>
-                      • Hyperparameters loaded: {cfg.params ? 'Yes' : 'No'}<br/>
-                      • Trained Weights loaded: {cfg.fittedParams && Object.keys(cfg.fittedParams).length > 0 ? 'Yes' : 'No'}
-                    </div>
-                    <Field label="Execution Mode" tooltip="Choose how to use this imported model in the pipeline.">
-                      <select className="pipeline-inspector__select" value={cfg.mode ?? 'frozen'} onChange={e => set('mode', e.target.value)}>
-                        <option value="frozen">Frozen (Use loaded weights for predict only)</option>
-                        {cfg.fittedParams && Object.keys(cfg.fittedParams).length > 0 && <option value="finetune">Fine-tune (Continue training weights)</option>}
-                        <option value="retrain">Retrain from scratch (Use hyperparameters only)</option>
-                      </select>
-                    </Field>
-                    
-                    {cfg.trainingSchema?.shape?.[1] && featureNames.length !== cfg.trainingSchema.shape[1] && (
-                      <div style={{ marginTop: 8, padding: 8, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: 4, color: '#fca5a5', fontSize: 10, lineHeight: 1.3 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, fontWeight: 600 }}>
-                           <Icon name="warning" size={12} /> Input Shape Mismatch
-                        </div>
-                        This pretrained model expects exactly <strong>{cfg.trainingSchema.shape[1]}</strong> input features, but your pipeline currently supplies <strong>{featureNames.length}</strong>. Predictions will likely fail unless this is corrected.
-                      </div>
-                    )}
-                  </>
-                )}
-                <button className="pipeline-inspector__secondary-btn" style={{ marginTop: 8 }} onClick={() => set('source', 'new')}>
-                  ← Discard & use fresh model
-                </button>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 9, opacity: 0.8, marginBottom: 8 }}>
-                  Currently using a fresh untrained mathematical state.
-                </div>
-                <button className="pipeline-inspector__secondary-btn" onClick={() => { set('source', 'loaded'); fileRef.current?.click(); }}>
-                  <Icon name="upload_file" size={12} /> Load pretrained (.om file)
-                </button>
-                <input ref={fileRef} type="file" accept=".om" onChange={handleOmLoad} style={{ display: 'none' }} />
-              </>
-            )}
-          </div>
+
 
           {node.type === 'MLPClassifier' && cfg.params?.hiddenLayers && (
              <div className="pipeline-inspector__section">
@@ -753,20 +676,7 @@ function NodeConfig({ node, updateNodeConfig, csvData, removeNode, featureNames 
         );
       })()}
 
-      {/* ENSEMBLE */}
-      {node.family === 'ensemble' && cfg.params && (
-        <div className="pipeline-inspector__section">
-          <div className="pipeline-inspector__section-title">Parameters</div>
-          {node.type === 'VotingClassifier' && (
-            <Field label="Voting" tooltip="Hard uses majority voting; Soft averages prediction probabilities.">
-              <select className="pipeline-inspector__select" value={cfg.params.voting ?? 'hard'} onChange={e => setParam('voting', e.target.value)}>
-                <option value="hard">Hard (majority vote)</option>
-                <option value="soft">Soft (probability avg)</option>
-              </select>
-            </Field>
-          )}
-        </div>
-      )}
+
 
       {node.error && (
         <div className="pipeline-inspector__error">{node.error}</div>
@@ -1086,7 +996,7 @@ function NodePreview({ result, node }: { result: any; node: PipelineNode }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {node.family === 'datasource' ? (
+      {node.family === 'dataset' ? (
         <>
           {result.outputSnapshot && (
             <SnapshotTable label="Dataset" snapshot={result.outputSnapshot} color="#6366f1" />
@@ -1187,14 +1097,17 @@ function SnapshotTable({ label, snapshot, color }: { label: string; snapshot: an
 // ── Interface Tab (test predictions) ─────────────────────────────────────────
 
 function NodeInterface({ isTrained, featureNames, testPrediction, pipeline }: {
-  isTrained: boolean; featureNames: string[]; testPrediction: (v: number[]) => number | null; pipeline: any;
+  isTrained: boolean; featureNames: string[]; testPrediction: (v: Record<string, number>) => number | null; pipeline: any;
 }) {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [prediction, setPrediction] = useState<number | null>(null);
   const [hasRun, setHasRun] = useState(false);
 
   const handlePredict = () => {
-    const vals = featureNames.map(n => parseFloat(inputValues[n] ?? '0') || 0);
+    const vals: Record<string, number> = {};
+    for (const name of featureNames) {
+      vals[name] = parseFloat(inputValues[name] ?? '0') || 0;
+    }
     const result = testPrediction(vals);
     setPrediction(result);
     setHasRun(true);

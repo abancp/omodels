@@ -5,12 +5,12 @@
 
 import { useState } from 'react';
 import { NODE_CATALOG, FAMILY_META } from '../NodeCatalog';
-import type { NodeCatalogEntry } from '../NodeCatalog';
+import type { NodeCatalogEntry } from '../PipelineTypes';
 import type { NodeFamily } from '../PipelineTypes';
 import Icon from '../../components/common/Icon';
 import { THEORY_CATALOG } from './NodeInspector';
 
-const FAMILIES: NodeFamily[] = ['datasource', 'preprocessor', 'model', 'ensemble', 'evaluation', 'output'];
+const FAMILIES: NodeFamily[] = ['dataset', 'split', 'preprocessor', 'model', 'evaluation', 'output'];
 
 export default function NodePalette() {
   const [search, setSearch] = useState('');

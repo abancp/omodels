@@ -6,7 +6,7 @@ import { usePipeline } from '../PipelineStore';
 import Icon from '../../components/common/Icon';
 
 export default function ExecutionLog() {
-  const { executionLog, validation, pipeline, isRunning } = usePipeline();
+  const { executionLog, validation, isRunning } = usePipeline();
 
   const hasErrors = validation && !validation.valid;
 

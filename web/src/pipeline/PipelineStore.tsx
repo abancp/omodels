@@ -1,12 +1,15 @@
 /**
  * Pipeline Store — React context for pipeline state management
+ * 
+ * Key change: No global CSV data. Each Dataset node owns its CSV data
+ * in its config. Data flows only through connections.
  */
 
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
-import type { Pipeline, PipelineNode, PipelineEdge, NodeState, PipelineState } from './PipelineTypes';
-import { validatePipeline, executePipeline, parseCSV, trainTestSplit, topologicalSort } from './PipelineEngine';
-import type { ValidationResult, NodeExecutionResult, DataFrame } from './PipelineTypes';
-import { NODE_CATALOG } from './NodeCatalog';
+import type { Pipeline, PipelineNode, PipelineEdge, NodeState } from './PipelineTypes';
+import { CONNECTION_RULES } from './PipelineTypes';
+import { validatePipeline, executePipeline, topologicalSort, parseCSV, runInference } from './PipelineEngine';
+import type { ValidationResult, NodeExecutionResult, DataPacket } from './PipelineTypes';
 
 let nodeIdCounter = 1;
 export function newNodeId() { return `node_${nodeIdCounter++}`; }
@@ -32,38 +35,31 @@ interface PipelineContextValue {
   executionLog: string[];
   nodeResults: Record<string, NodeExecutionResult>;
   isRunning: boolean;
-  csvData: { headers: string[]; rows: number[][]; rowCount: number } | null;
   fittedEngines: Record<string, any>;
   featureNames: string[];
+  rawFeatureNames: string[];
 
-  // Node ops
   addNode: (node: PipelineNode) => void;
   removeNode: (id: string) => void;
   updateNode: (id: string, changes: Partial<PipelineNode>) => void;
   updateNodeConfig: (id: string, config: Partial<any>) => void;
   moveNode: (id: string, pos: { x: number; y: number }) => void;
   selectNode: (id: string | null) => void;
-
-  // Edge ops
   addEdge: (edge: PipelineEdge) => void;
   removeEdge: (id: string) => void;
-
-  // Pipeline ops
   renamePipeline: (name: string) => void;
   runPipeline: () => Promise<void>;
   resetPipeline: () => void;
   savePipeline: () => void;
   loadPipeline: (json: string) => void;
-
-  // Data
-  loadCSV: (text: string, filename: string) => void;
-
-  // Inference
-  testPrediction: (inputValues: number[]) => number | null;
+  /** Load CSV into a specific Dataset node */
+  loadCSVToNode: (nodeId: string, text: string, filename: string) => void;
+  /** Check if a proposed connection is valid */
+  canConnect: (sourceId: string, targetId: string) => boolean;
+  testPrediction: (inputValues: Record<string, number>) => number | null;
 }
 
 const PipelineContext = createContext<PipelineContextValue | null>(null);
-
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
   const [pipeline, setPipeline] = useState<Pipeline>(emptyPipeline);
@@ -72,17 +68,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [executionLog, setExecutionLog] = useState<string[]>([]);
   const [nodeResults, setNodeResults] = useState<Record<string, NodeExecutionResult>>({});
   const [isRunning, setIsRunning] = useState(false);
-  const [csvData, setCsvData] = useState<{ headers: string[]; rows: number[][]; rowCount: number } | null>(null);
   const [fittedEngines, setFittedEngines] = useState<Record<string, any>>({});
   const [featureNames, setFeatureNames] = useState<string[]>([]);
-  const csvRef = useRef<{ headers: string[]; rows: number[][]; rowCount: number } | null>(null);
-  // Keep fittedEngines in a ref too for synchronous access in testPrediction
+  const [rawFeatureNames, setRawFeatureNames] = useState<string[]>([]);
+
   const fittedEnginesRef = useRef<Record<string, any>>({});
   const topOrderRef = useRef<string[]>([]);
-
-  const touch = useCallback(() => {
-    setPipeline(p => ({ ...p, updatedAt: new Date().toISOString() }));
-  }, []);
+  const nodePacketsRef = useRef<Record<string, DataPacket>>({});
 
   const addNode = useCallback((node: PipelineNode) => {
     setPipeline(p => ({ ...p, nodes: [...p.nodes, node], state: 'draft' }));
@@ -123,11 +115,30 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const selectNode = useCallback((id: string | null) => setSelectedNodeId(id), []);
 
+  /** Check connection validity using CONNECTION_RULES */
+  const canConnect = useCallback((sourceId: string, targetId: string): boolean => {
+    const srcNode = pipeline.nodes.find(n => n.id === sourceId);
+    const tgtNode = pipeline.nodes.find(n => n.id === targetId);
+    if (!srcNode || !tgtNode) return false;
+    if (sourceId === targetId) return false;
+    // Check connection rules
+    const allowed = CONNECTION_RULES[tgtNode.family];
+    if (!allowed?.includes(srcNode.family)) return false;
+    // Check for duplicate edges
+    if (pipeline.edges.some(e => e.source === sourceId && e.target === targetId)) return false;
+    return true;
+  }, [pipeline.nodes, pipeline.edges]);
+
   const addEdge = useCallback((edge: PipelineEdge) => {
     setPipeline(p => {
-      // Prevent duplicate edges
-      const dup = p.edges.find(e => e.source === edge.source && e.target === edge.target);
-      if (dup) return p;
+      const srcNode = p.nodes.find(n => n.id === edge.source);
+      const tgtNode = p.nodes.find(n => n.id === edge.target);
+      if (!srcNode || !tgtNode) return p;
+      // Enforce connection rules
+      const allowed = CONNECTION_RULES[tgtNode.family];
+      if (!allowed?.includes(srcNode.family)) return p;
+      // Prevent duplicates
+      if (p.edges.some(e => e.source === edge.source && e.target === edge.target)) return p;
       return { ...p, edges: [...p.edges, edge], state: 'draft' };
     });
   }, []);
@@ -140,6 +151,25 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setPipeline(p => ({ ...p, name }));
   }, []);
 
+  /** Load CSV data into a specific Dataset node's config */
+  const loadCSVToNode = useCallback((nodeId: string, text: string, filename: string) => {
+    const { headers, rows } = parseCSV(text);
+    setPipeline(p => ({
+      ...p,
+      nodes: p.nodes.map(n => n.id === nodeId ? {
+        ...n,
+        config: {
+          ...n.config,
+          csvText: text,
+          csvFilename: filename,
+          csvHeaders: headers,
+          csvRowCount: rows.length,
+          targetColumn: (n.config as any).targetColumn || headers[headers.length - 1] || '',
+        },
+      } : n),
+    }));
+  }, []);
+
   const runPipeline = useCallback(async () => {
     const v = validatePipeline(pipeline);
     setValidation(v);
@@ -148,67 +178,19 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const sourceNode = pipeline.nodes.find(n => n.family === 'datasource');
-    if (!sourceNode) return;
-    const cfg = sourceNode.config as any;
-
-    const csv = csvRef.current;
-    if (!csv || csv.rows.length === 0) {
-      setExecutionLog(['⚠ No CSV data loaded. Upload a dataset using the right panel.']);
-      return;
-    }
-
-    const targetCol = cfg.targetColumn || csv.headers[csv.headers.length - 1];
-    const targetIdx = csv.headers.indexOf(targetCol);
-    if (targetIdx === -1) {
-      setExecutionLog(['⚠ Target column not found. Check Data Source → Target Column.']);
-      return;
-    }
-
-    // Split rows into train/test (keeping all columns intact)
-    const allRows = csv.rows;
-    const n = allRows.length;
-    const indices = Array.from({ length: n }, (_, i) => i);
-    for (let i = n - 1; i > 0; i--) {
-      const j = Math.floor((i + 1) * 0.582) % (i + 1);
-      [indices[i], indices[j]] = [indices[j], indices[i]];
-    }
-    const splitIdx = Math.floor(n * (1 - (cfg.testSplit ?? 0.2)));
-    const trainRows = indices.slice(0, splitIdx).map(i => allRows[i]);
-    const testRows = indices.slice(splitIdx).map(i => allRows[i]);
-
-    const trainDF: DataFrame = { columns: [...csv.headers], rows: trainRows };
-    const testDF: DataFrame = { columns: [...csv.headers], rows: testRows };
-
-    const fNames = csv.headers.filter(h => h !== targetCol);
-    const y = allRows.map(r => r[targetIdx]);
-
-    const pipelineWithData: Pipeline = {
-      ...pipeline,
-      data: { train: trainDF, test: testDF },
-      schema: {
-        columns: fNames.map(n => ({ name: n, type: 'numeric' as const })),
-        shape: [allRows.length, fNames.length],
-        target: targetCol,
-        taskType: cfg.taskType === 'auto'
-          ? (y.every((v: any) => v === 0 || v === 1) ? 'classification' : 'regression')
-          : cfg.taskType,
-      },
-    };
-
     setIsRunning(true);
     setExecutionLog([]);
     setNodeResults({});
     setFittedEngines({});
-    setPipeline(p => ({ ...p, state: 'training' }));
     setPipeline(p => ({
       ...p,
+      state: 'training',
       nodes: p.nodes.map(n => ({ ...n, state: 'idle' as NodeState })),
     }));
 
     try {
-      const { results, fittedEngines: engines, featureNames: fN } = await executePipeline(
-        pipelineWithData,
+      const { results, fittedEngines: engines, featureNames: fN, nodePackets } = await executePipeline(
+        pipeline,
         (id) => {
           setPipeline(p => ({
             ...p,
@@ -231,11 +213,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         (msg) => setExecutionLog(prev => [...prev, msg]),
       );
 
-      // Store fitted engines for inference
       fittedEnginesRef.current = engines;
       topOrderRef.current = topologicalSort(pipeline.nodes, pipeline.edges) ?? [];
+      nodePacketsRef.current = nodePackets;
       setFittedEngines(engines);
       setFeatureNames(fN);
+      
+      const rawDatasetPacket = Object.values(nodePackets).find((p: any) => p.meta?.targetColumn !== undefined);
+      const rawFN = rawDatasetPacket ? rawDatasetPacket.train.columns.filter((c: string) => c !== rawDatasetPacket.meta.targetColumn) : [];
+      setRawFeatureNames(rawFN);
 
       const allMetrics: Record<string, number> = {};
       Object.values(results).forEach(r => {
@@ -264,44 +250,32 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setValidation(null);
     setFittedEngines({});
     setFeatureNames([]);
+    setRawFeatureNames([]);
     fittedEnginesRef.current = {};
     topOrderRef.current = [];
+    nodePacketsRef.current = {};
   }, []);
 
-  // ── Inference: apply preprocessors then model ─────────────────────────────
-  const testPrediction = useCallback((inputValues: number[]): number | null => {
+  const testPrediction = useCallback((inputValues: Record<string, number>): number | null => {
     const engines = fittedEnginesRef.current;
-    const order = topOrderRef.current;
-    if (Object.keys(engines).length === 0 || order.length === 0) return null;
-
-    const nodeMap = new Map(pipeline.nodes.map(n => [n.id, n]));
-    let X = [inputValues];
-    let result: number | null = null;
-
-    for (const nodeId of order) {
-      const engine = engines[nodeId];
-      if (!engine) continue;
-      const node = nodeMap.get(nodeId);
-      if (!node) continue;
-      if (node.family === 'preprocessor' && engine.transform) {
-        X = engine.transform(X);
-      } else if (node.family === 'model' && engine.predict) {
-        result = engine.predict(X)[0];
-      }
-    }
-    return result;
-  }, [pipeline.nodes]);
+    if (Object.keys(engines).length === 0) return null;
+    return runInference(pipeline, inputValues, engines, nodePacketsRef.current);
+  }, [pipeline]);
 
   const savePipeline = useCallback(() => {
+    // Strip csvText from config before saving to reduce file size
     const serializable = {
       ...pipeline,
-      data: undefined, // don't serialize raw data
+      nodes: pipeline.nodes.map(n => ({
+        ...n,
+        config: n.family === 'dataset' ? { ...n.config, csvText: undefined } : n.config,
+      })),
     };
     const blob = new Blob([JSON.stringify(serializable, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${pipeline.name.replace(/\s+/g, '-').toLowerCase()}.pipeline.om`;
+    a.download = `${pipeline.name.replace(/\s+/g, '-').toLowerCase()}.pipeline.json`;
     a.click();
     URL.revokeObjectURL(url);
   }, [pipeline]);
@@ -315,33 +289,14 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setPipeline({ ...p, state: 'draft' });
   }, []);
 
-  const loadCSV = useCallback((text: string, _filename: string) => {
-    const { headers, rows } = parseCSV(text);
-    const data = { headers, rows, rowCount: rows.length };
-    setCsvData(data);
-    csvRef.current = data;
-    // Auto-set target column on source node
-    setPipeline(p => ({
-      ...p,
-      nodes: p.nodes.map(n => n.family === 'datasource' ? {
-        ...n,
-        config: {
-          ...n.config,
-          targetColumn: (n.config as any).targetColumn || headers[headers.length - 1] || '',
-          datasetName: _filename,
-        },
-      } : n),
-    }));
-  }, []);
-
   return (
     <PipelineContext.Provider value={{
-      pipeline, selectedNodeId, validation, executionLog, nodeResults, isRunning, csvData,
+      pipeline, selectedNodeId, validation, executionLog, nodeResults, isRunning,
       fittedEngines, featureNames,
       addNode, removeNode, updateNode, updateNodeConfig, moveNode, selectNode,
       addEdge, removeEdge,
-      renamePipeline, runPipeline, resetPipeline, savePipeline, loadPipeline, loadCSV,
-      testPrediction,
+      renamePipeline, runPipeline, resetPipeline, savePipeline, loadPipeline,
+      loadCSVToNode, canConnect, testPrediction, rawFeatureNames,
     }}>
       {children}
     </PipelineContext.Provider>

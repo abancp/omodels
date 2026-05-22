@@ -1,14 +1,28 @@
 /**
  * Pipeline Types — Core type system for ML Pipeline Builder
+ * 
+ * Architecture: Each node is fully isolated. Data flows only through
+ * explicit connections via a standard DataPacket protocol.
  */
+
+// ─── Port Types ──────────────────────────────────────────────────────────────
+
+/** Port types determine what kind of data flows through connections */
+export type PortType = 'data' | 'predictions';
+
+export interface PortDefinition {
+  type: PortType;
+  label: string;
+  multiple?: boolean; // allow multiple connections to this port
+}
 
 // ─── Node Families ───────────────────────────────────────────────────────────
 
 export type NodeFamily =
-  | 'datasource'
+  | 'dataset'
+  | 'split'
   | 'preprocessor'
   | 'model'
-  | 'ensemble'
   | 'evaluation'
   | 'output';
 
@@ -16,7 +30,7 @@ export type NodeState = 'idle' | 'training' | 'trained' | 'stale' | 'error';
 
 export type PipelineState = 'draft' | 'validating' | 'training' | 'trained' | 'stale' | 'error';
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
+// ─── Schema ──────────────────────────────────────────────────────────────────
 
 export interface ColumnSchema {
   name: string;
@@ -30,50 +44,86 @@ export interface DataSchema {
   taskType?: 'classification' | 'regression';
 }
 
-// ─── DataFrame — the unit of data flowing through edges ───────────────────────
+// ─── DataFrame — the raw data unit ───────────────────────────────────────────
 
 export interface DataFrame {
   columns: string[];    // column names (ALL columns including target)
   rows: any[][];        // row × column matrix
 }
 
-// ─── Node Config Types ────────────────────────────────────────────────────────
+// ─── DataPacket — the standard unit flowing through edges ────────────────────
 
-export interface DataSourceConfig {
-  datasetName: string;
-  datasetSource: 'manual' | 'file' | 'datastudio';
-  testSplit: number; // 0-1
-  stratified: boolean;
-  splitMode: 'holdout' | 'kfold';
-  kFolds: number;
+export interface DataPacket {
+  train: DataFrame;
+  test: DataFrame;
+  meta: DataPacketMeta;
+  /** Set by model nodes after training */
+  predictions?: number[];
+  /** Set by model nodes that support probability output */
+  probabilities?: number[][];
+}
+
+export interface DataPacketMeta {
   targetColumn: string;
   taskType: 'classification' | 'regression' | 'auto';
+  featureColumns: string[];
+  schema: DataSchema;
+}
+
+// ─── Connection Rules ────────────────────────────────────────────────────────
+
+/** Defines which families a node family can accept input from */
+export const CONNECTION_RULES: Record<NodeFamily, NodeFamily[]> = {
+  dataset:      [],                                         // no inputs
+  split:        ['dataset'],                                // only from dataset
+  preprocessor: ['dataset', 'split', 'preprocessor'],      // data chain
+  model:        ['dataset', 'split', 'preprocessor'],      // data in
+  evaluation:   ['model'],                                  // predictions in
+  output:       ['model'],                                  // predictions in
+};
+
+/** Defines which families a node family can send output to */
+export const OUTPUT_RULES: Record<NodeFamily, NodeFamily[]> = {
+  dataset:      ['split', 'preprocessor', 'model'],
+  split:        ['preprocessor', 'model'],
+  preprocessor: ['preprocessor', 'model'],
+  model:        ['evaluation', 'output'],
+  evaluation:   [],                                         // terminal
+  output:       [],                                         // terminal
+};
+
+// ─── Node Config Types ───────────────────────────────────────────────────────
+
+export interface DatasetConfig {
+  targetColumn: string;
+  taskType: 'classification' | 'regression' | 'auto';
+  /** CSV data stored per-node — each Dataset node owns its own data */
+  csvText?: string;
+  csvFilename?: string;
+  csvHeaders?: string[];
+  csvRowCount?: number;
+}
+
+export interface SplitConfig {
+  testSplit: number;
+  stratified: boolean;
+  shuffle: boolean;
 }
 
 export interface PreprocessorConfig {
   type: string;
   params: Record<string, unknown>;
+  /** Optional: specific columns to transform (empty = all feature columns) */
+  targetColumns?: string[];
 }
 
 export interface ModelConfig {
-  type: string;
-  source: 'new' | 'loaded';
-  params: Record<string, unknown>;
-  loadedModelId?: string;
-  loadedModelFile?: string;
-  mode?: 'frozen' | 'retrain' | 'finetune';
-  fittedParams?: Record<string, unknown>;
-  trainingSchema?: DataSchema;
-}
-
-export interface EnsembleConfig {
   type: string;
   params: Record<string, unknown>;
 }
 
 export interface EvaluationConfig {
   type: string;
-  metrics?: string[];
 }
 
 export interface OutputConfig {
@@ -82,14 +132,14 @@ export interface OutputConfig {
 }
 
 export type NodeConfig =
-  | DataSourceConfig
+  | DatasetConfig
+  | SplitConfig
   | PreprocessorConfig
   | ModelConfig
-  | EnsembleConfig
   | EvaluationConfig
   | OutputConfig;
 
-// ─── Pipeline Node ────────────────────────────────────────────────────────────
+// ─── Pipeline Node ───────────────────────────────────────────────────────────
 
 export interface PipelineNode {
   id: string;
@@ -97,19 +147,20 @@ export interface PipelineNode {
   type: string;
   label: string;
   config: NodeConfig;
-  fittedParams?: Record<string, unknown>;
   state: NodeState;
   error?: string;
   // Layout
   position: { x: number; y: number };
-  // Schema inference
-  inputSchema?: DataSchema;
-  outputSchema?: DataSchema;
+  // Fitted state from training
+  fittedParams?: Record<string, unknown>;
   // Metrics (for evaluation nodes)
   metrics?: Record<string, number>;
+  // Schema inferred during execution
+  inputSchema?: DataSchema;
+  outputSchema?: DataSchema;
 }
 
-// ─── Pipeline Edge ────────────────────────────────────────────────────────────
+// ─── Pipeline Edge ───────────────────────────────────────────────────────────
 
 export interface PipelineEdge {
   id: string;
@@ -119,7 +170,7 @@ export interface PipelineEdge {
   targetHandle?: string;
 }
 
-// ─── Pipeline ─────────────────────────────────────────────────────────────────
+// ─── Pipeline ────────────────────────────────────────────────────────────────
 
 export interface Pipeline {
   id: string;
@@ -128,17 +179,11 @@ export interface Pipeline {
   edges: PipelineEdge[];
   state: PipelineState;
   metrics?: Record<string, number>;
-  schema?: DataSchema;
   createdAt: string;
   updatedAt: string;
-  // Runtime data (not serialized)
-  data?: {
-    train: DataFrame;
-    test: DataFrame;
-  };
 }
 
-// ─── Node Catalog Entry ───────────────────────────────────────────────────────
+// ─── Node Catalog Entry ──────────────────────────────────────────────────────
 
 export interface NodeCatalogEntry {
   family: NodeFamily;
@@ -146,14 +191,19 @@ export interface NodeCatalogEntry {
   label: string;
   icon: string;
   description: string;
-  color: string; // accent color
+  color: string;
   defaultConfig: Partial<NodeConfig>;
+  /** Which families can connect TO this node */
+  acceptsFrom: NodeFamily[];
+  /** Which families this node can connect TO */
+  outputsTo: NodeFamily[];
+  /** Max incoming connections (0 = none, undefined = 1) */
   maxIncoming?: number;
+  /** Max outgoing connections (0 = none, undefined = unlimited) */
   maxOutgoing?: number;
-  minIncoming?: number;
 }
 
-// ─── Validation Result ────────────────────────────────────────────────────────
+// ─── Validation ──────────────────────────────────────────────────────────────
 
 export interface ValidationError {
   nodeId?: string;
@@ -175,12 +225,12 @@ export interface DataSnapshot {
   featureNames: string[];
 }
 
-// ─── Execution Result ─────────────────────────────────────────────────────────
+// ─── Execution Result ────────────────────────────────────────────────────────
 
 export interface NodeExecutionResult {
   nodeId: string;
   success: boolean;
-  fittedParams?: Record<string, unknown>;
+  fittedParams?: any;
   metrics?: Record<string, number>;
   outputSchema?: DataSchema;
   error?: string;

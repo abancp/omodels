@@ -5,16 +5,15 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { usePipeline, newNodeId, newEdgeId } from '../PipelineStore';
 import type { PipelineNode, PipelineEdge, NodeFamily } from '../PipelineTypes';
-import { getCatalogEntry, FAMILY_META, NODE_CATALOG } from '../NodeCatalog';
-import Icon from '../../components/common/Icon';
+import { getCatalogEntry, NODE_CATALOG } from '../NodeCatalog';
 import ContextMenu from './ContextMenu';
 import type { ContextMenuEntry } from './ContextMenu';
 
 const FAMILY_COLORS: Record<string, string> = {
-  datasource: '#6366f1',
+  dataset: '#6366f1',
+  split: '#818cf8',
   preprocessor: '#10b981',
   model: '#f59e0b',
-  ensemble: '#8b5cf6',
   evaluation: '#ef4444',
   output: '#06b6d4',
 };
@@ -38,7 +37,7 @@ interface ConnectState {
 export default function PipelineCanvas() {
   const {
     pipeline, selectedNodeId, addNode, removeNode, moveNode, selectNode,
-    addEdge, removeEdge, isRunning, nodeResults, csvData,
+    addEdge, removeEdge, isRunning, nodeResults, canConnect,
   } = usePipeline();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -145,11 +144,6 @@ export default function PipelineCanvas() {
 
     const world = screenToWorld(e.clientX, e.clientY);
 
-    // Only one data source allowed
-    if (family === 'datasource' && pipeline.nodes.some(n => n.family === 'datasource')) {
-      alert('Only one Data Source node allowed per pipeline.');
-      return;
-    }
 
     const node: PipelineNode = {
       id: newNodeId(),
@@ -201,10 +195,12 @@ export default function PipelineCanvas() {
   const onNodeMouseUp = useCallback((e: React.MouseEvent, nodeId: string) => {
     if (connecting && connecting.fromNodeId !== nodeId) {
       e.stopPropagation();
-      addEdge({ id: newEdgeId(), source: connecting.fromNodeId, target: nodeId });
+      if (canConnect(connecting.fromNodeId, nodeId)) {
+        addEdge({ id: newEdgeId(), source: connecting.fromNodeId, target: nodeId });
+      }
       setConnecting(null);
     }
-  }, [connecting, addEdge]);
+  }, [connecting, addEdge, canConnect]);
 
   const onCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -215,8 +211,6 @@ export default function PipelineCanvas() {
   const buildNodeMenu = useCallback((nodeId: string): ContextMenuEntry[] => {
     const node = pipeline.nodes.find(n => n.id === nodeId);
     if (!node) return [];
-    const color = FAMILY_COLORS[node.family];
-
     const quickAdd = (family: NodeFamily, type: string) => {
       const catalog = getCatalogEntry(family, type);
       if (!catalog) return;
@@ -251,7 +245,7 @@ export default function PipelineCanvas() {
         } },
       { id: 'chain', label: 'Add connected node', icon: 'add_circle',
         children: NODE_CATALOG
-          .filter(e => e.family !== 'datasource')
+          .filter(e => e.family !== 'dataset')
           .slice(0, 12)
           .map(e => ({
             id: `chain-${e.type}`, label: e.label, icon: e.icon,
@@ -270,9 +264,6 @@ export default function PipelineCanvas() {
 
   const buildCanvasMenu = useCallback((wx: number, wy: number): ContextMenuEntry[] => {
     const spawnNode = (family: NodeFamily, type: string) => {
-      if (family === 'datasource' && pipeline.nodes.some(n => n.family === 'datasource')) {
-        alert('Only one Data Source node allowed.'); return;
-      }
       const catalog = getCatalogEntry(family, type);
       if (!catalog) return;
       const node: PipelineNode = {
@@ -286,12 +277,11 @@ export default function PipelineCanvas() {
     return [
       { id: 'add', label: 'Add Node', icon: 'add_circle',
         children: [
-          { id: 'add-ds', label: 'Dataset (Data Source)', icon: 'dataset', action: () => spawnNode('datasource', 'Dataset') },
+          { id: 'add-ds', label: 'Dataset', icon: 'dataset', action: () => spawnNode('dataset', 'Dataset') },
+          { id: 'add-split', label: 'Train/Test Split', icon: 'call_split', action: () => spawnNode('split', 'TrainTestSplit') },
           { id: 'add-scaler', label: 'Standard Scaler', icon: 'equalizer', action: () => spawnNode('preprocessor', 'StandardScaler') },
-          { id: 'add-pca', label: 'PCA', icon: 'hub', action: () => spawnNode('preprocessor', 'PCA') },
           { id: 'add-label', label: 'Label Encoder', icon: 'font_download', action: () => spawnNode('preprocessor', 'LabelEncoder') },
           { id: 'add-onehot', label: 'One-Hot Encoder', icon: 'grid_on', action: () => spawnNode('preprocessor', 'OneHotEncoder') },
-          { id: 'add-drop', label: 'Drop Columns', icon: 'delete_sweep', action: () => spawnNode('preprocessor', 'DropColumns') },
           { id: 'add-lr', label: 'Linear Regression', icon: 'trending_up', action: () => spawnNode('model', 'LinearRegression') },
           { id: 'add-log', label: 'Logistic Regression', icon: 'scatter_plot', action: () => spawnNode('model', 'LogisticRegression') },
           { id: 'add-knn', label: 'KNN', icon: 'grain', action: () => spawnNode('model', 'KNN') },
@@ -344,7 +334,7 @@ export default function PipelineCanvas() {
           const data = localStorage.getItem('om_clipboard');
           if (data) {
             const parsed = JSON.parse(data) as PipelineNode;
-            if (parsed.family === 'datasource' && pipeline.nodes.some(n => n.family === 'datasource')) return;
+            if (parsed.family === 'dataset' && pipeline.nodes.some(n => n.family === 'dataset')) return;
             const nn: PipelineNode = {
               ...parsed,
               id: newNodeId(),
@@ -361,7 +351,7 @@ export default function PipelineCanvas() {
         e.preventDefault();
         const node = pipeline.nodes.find(n => n.id === selectedNodeId);
         if (node) {
-          if (node.family === 'datasource') return; // Only 1 datasource allowed
+          if (node.family === 'dataset') return; // Multiple datasets allowed, skip duplicate for now
           const nn: PipelineNode = {
             ...node,
             id: newNodeId(),
@@ -395,26 +385,22 @@ export default function PipelineCanvas() {
     if (!connecting) return;
     if (connecting.fromNodeId === nodeId) { setConnecting(null); return; }
 
-    const edge: PipelineEdge = {
-      id: newEdgeId(),
-      source: connecting.fromNodeId,
-      target: nodeId,
-    };
-    addEdge(edge);
+    if (canConnect(connecting.fromNodeId, nodeId)) {
+      const edge: PipelineEdge = {
+        id: newEdgeId(),
+        source: connecting.fromNodeId,
+        target: nodeId,
+      };
+      addEdge(edge);
+    }
     setConnecting(null);
-  }, [connecting, addEdge]);
+  }, [connecting, addEdge, canConnect]);
 
   // ─── Node geometry ─────────────────────────────────────────────────────────
 
   const NODE_W = 180;
   const NODE_H = 64;
 
-  function nodeCenter(node: PipelineNode) {
-    return {
-      x: node.position.x + NODE_W / 2,
-      y: node.position.y + NODE_H / 2,
-    };
-  }
 
   function outputPortPos(node: PipelineNode) {
     return { x: node.position.x + NODE_W, y: node.position.y + NODE_H / 2 };
@@ -524,10 +510,7 @@ export default function PipelineCanvas() {
             const color = FAMILY_COLORS[node.family] ?? '#888';
             const stateColor = STATE_COLORS[node.state] ?? 'transparent';
             const isSelected = selectedNodeId === node.id;
-            const catalog = getCatalogEntry(node.family, node.type);
-            const op = outputPortPos(node);
-            const ip = inputPortPos(node);
-            const isSource = node.family === 'datasource';
+            const isSource = node.family === 'dataset';
             const isOutput = node.family === 'output' || node.family === 'evaluation';
 
             return (
@@ -759,24 +742,24 @@ export default function PipelineCanvas() {
               </span>
             </div>
 
-            {/* DATA SOURCE DETAILS */}
-            {hNode.family === 'datasource' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10, color: 'var(--c-on-surface-variant)' }}>
-                {csvData ? (
-                  <>
-                    <div>📁 File: <strong>{csvData.filename || 'dataset.csv'}</strong></div>
-                    <div>📊 Size: <strong>{csvData.rowCount} rows · {csvData.headers.length} columns</strong></div>
-                    <div>🎯 Target label: <strong style={{ color: 'var(--c-primary)' }}>{hNode.config.targetColumn || 'Not selected'}</strong></div>
-                    <div>⚙ Task Type: <strong>{hNode.config.taskType || 'Auto-detect'}</strong></div>
-                    <div style={{ fontStyle: 'italic', opacity: 0.7 }}>
-                      {hNode.config.splitMode === 'kfold' ? `Split: ${hNode.config.kFolds}-fold Cross Validation` : `Split: ${Math.round((hNode.config.testSplit || 0.2) * 100)}% test / ${Math.round((1 - (hNode.config.testSplit || 0.2)) * 100)}% train`}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ opacity: 0.5, fontStyle: 'italic' }}>No CSV file uploaded yet. Open Config tab to select or upload data.</div>
-                )}
-              </div>
-            )}
+            {/* DATASET DETAILS */}
+            {hNode.family === 'dataset' && (() => {
+              const cfg = hNode.config as any;
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10, color: 'var(--c-on-surface-variant)' }}>
+                  {cfg.csvFilename ? (
+                    <>
+                      <div>📁 File: <strong>{cfg.csvFilename}</strong></div>
+                      <div>📊 Size: <strong>{cfg.csvRowCount ?? 0} rows · {cfg.csvHeaders?.length ?? 0} columns</strong></div>
+                      <div>🎯 Target: <strong style={{ color: 'var(--c-primary)' }}>{cfg.targetColumn || 'Not selected'}</strong></div>
+                      <div>⚙ Task: <strong>{cfg.taskType || 'Auto-detect'}</strong></div>
+                    </>
+                  ) : (
+                    <div style={{ opacity: 0.5, fontStyle: 'italic' }}>No CSV uploaded. Select this node and upload data.</div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* PREPROCESSOR DETAILS */}
             {hNode.family === 'preprocessor' && (
@@ -854,12 +837,12 @@ export default function PipelineCanvas() {
                 {result ? (
                   <>
                     <div style={{ fontSize: 9, fontFamily: 'monospace', color: 'var(--c-on-surface-variant)' }}>
-                      Fitted on features: <span style={{ color: 'var(--c-primary)' }}>{result.inputSnapshot?.featureNames.slice(0, 3).join(', ')}{result.inputSnapshot?.featureNames.length > 3 ? '…' : ''}</span>
+                      Fitted on features: <span style={{ color: 'var(--c-primary)' }}>{result.inputSnapshot?.featureNames.slice(0, 3).join(', ')}{(result.inputSnapshot?.featureNames?.length ?? 0) > 3 ? '…' : ''}</span>
                     </div>
                     {/* Metrics quick glance */}
                     {hasMetrics && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {Object.entries(result.metrics).slice(0, 3).map(([k, v]) => (
+                        {Object.entries(result.metrics ?? {}).slice(0, 3).map(([k, v]) => (
                           <span
                             key={k}
                             style={{
@@ -942,7 +925,7 @@ export default function PipelineCanvas() {
                     </div>
                     {hasMetrics && (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                        {Object.entries(result.metrics).map(([k, v]) => {
+                        {Object.entries(result.metrics ?? {}).map(([k, v]) => {
                           if (['tp', 'fp', 'fn', 'tn'].includes(k)) return null;
                           return (
                             <div key={k} style={{ fontSize: 9, display: 'flex', justifyContent: 'space-between', borderBottom: '0.5px solid rgba(255,255,255,0.04)', paddingBottom: 2 }}>
