@@ -54,8 +54,8 @@ export class TFLinearRegressionEngine {
       metrics: ['mse'],
     });
 
-    const xTensor = tf.tensor2d(X);
-    const yTensor = tf.tensor2d(y, [y.length, 1]);
+    const xTensor = tf.tensor2d(X, undefined, 'float32');
+    const yTensor = tf.tensor2d(y, [y.length, 1], 'float32');
 
     try {
       await this.model.fit(xTensor, yTensor, {
@@ -79,7 +79,7 @@ export class TFLinearRegressionEngine {
   predict(X: number[][]): number[] {
     if (!this.model || X.length === 0) return [];
     return tf.tidy(() => {
-      const preds = this.model!.predict(tf.tensor2d(X)) as tf.Tensor;
+      const preds = this.model!.predict(tf.tensor2d(X, undefined, 'float32')) as tf.Tensor;
       return Array.from(preds.dataSync());
     });
   }
@@ -123,10 +123,10 @@ export class TFLogisticRegressionEngine {
       metrics: ['accuracy'],
     });
 
-    const xTensor = tf.tensor2d(X);
+    const xTensor = tf.tensor2d(X, undefined, 'float32');
     const yTensor = isBinary
-      ? tf.tensor2d(y, [y.length, 1])
-      : tf.tensor1d(y, 'int32');
+      ? tf.tensor2d(y, [y.length, 1], 'float32')
+      : tf.tensor1d(y, 'float32');
 
     try {
       await this.model.fit(xTensor, yTensor, {
@@ -150,7 +150,7 @@ export class TFLogisticRegressionEngine {
   predict(X: number[][]): number[] {
     if (!this.model || X.length === 0) return [];
     return tf.tidy(() => {
-      const preds = this.model!.predict(tf.tensor2d(X)) as tf.Tensor;
+      const preds = this.model!.predict(tf.tensor2d(X, undefined, 'float32')) as tf.Tensor;
       if (this.numClasses <= 2) {
         return Array.from(preds.dataSync()).map(v => v >= 0.5 ? 1 : 0);
       } else {
@@ -164,7 +164,7 @@ export class TFLogisticRegressionEngine {
   predictProba(X: number[][]): number[] {
     if (!this.model || X.length === 0) return [];
     return tf.tidy(() => {
-      const preds = this.model!.predict(tf.tensor2d(X)) as tf.Tensor;
+      const preds = this.model!.predict(tf.tensor2d(X, undefined, 'float32')) as tf.Tensor;
       return Array.from(preds.dataSync());
     });
   }
@@ -236,10 +236,10 @@ export class TFMLPEngine {
       metrics: this.isRegression ? ['mse'] : ['accuracy'],
     });
 
-    const xTensor = tf.tensor2d(X);
+    const xTensor = tf.tensor2d(X, undefined, 'float32');
     const yTensor = this.isRegression
-      ? tf.tensor2d(y, [y.length, 1])
-      : (isBinary ? tf.tensor2d(y, [y.length, 1]) : tf.tensor1d(y, 'int32'));
+      ? tf.tensor2d(y, [y.length, 1], 'float32')
+      : (isBinary ? tf.tensor2d(y, [y.length, 1], 'float32') : tf.tensor1d(y, 'float32'));
 
     this.lossHistory = [];
 
@@ -266,7 +266,7 @@ export class TFMLPEngine {
   predict(X: number[][]): number[] {
     if (!this.model || X.length === 0) return [];
     return tf.tidy(() => {
-      const preds = this.model!.predict(tf.tensor2d(X)) as tf.Tensor;
+      const preds = this.model!.predict(tf.tensor2d(X, undefined, 'float32')) as tf.Tensor;
       if (this.isRegression) {
         return Array.from(preds.dataSync());
       }
@@ -284,7 +284,7 @@ export class TFMLPEngine {
   predictProba(X: number[][]): number[] {
     if (!this.model || X.length === 0) return [];
     return tf.tidy(() => {
-      const preds = this.model!.predict(tf.tensor2d(X)) as tf.Tensor;
+      const preds = this.model!.predict(tf.tensor2d(X, undefined, 'float32')) as tf.Tensor;
       return Array.from(preds.dataSync());
     });
   }

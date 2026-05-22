@@ -118,3 +118,13 @@ export class OneHotEncoderEngine {
     });
   }
 }
+
+export class DropColumnsEngine {
+  fit(_X: any[][]) {
+    // Structural preprocessor; no fitting needed.
+  }
+  transform(X: any[][]): number[][] {
+    return X.map(() => []);
+  }
+}
+

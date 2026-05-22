@@ -12,7 +12,7 @@ import type {
 } from './PipelineTypes';
 import { CONNECTION_RULES } from './PipelineTypes';
 import { TFLinearRegressionEngine, TFLogisticRegressionEngine, TFMLPEngine } from './_tf_engines';
-import { StandardScalerEngine, MinMaxScalerEngine, SimpleImputerEngine, LabelEncoderEngine, OneHotEncoderEngine } from './_preprocessors';
+import { StandardScalerEngine, MinMaxScalerEngine, SimpleImputerEngine, LabelEncoderEngine, OneHotEncoderEngine, DropColumnsEngine } from './_preprocessors';
 import { KNNEngine, DecisionTreeEngine, RandomForestEngine, SVMEngine, NaiveBayesEngine, KMeansEngine } from './_js_models';
 
 // ─── Topological Sort (Kahn's algorithm) ──────────────────────────────────────
@@ -238,6 +238,7 @@ function executePreprocessor(
   else if (node.type === 'SimpleImputer') engine = new SimpleImputerEngine(cfg.params?.strategy);
   else if (node.type === 'LabelEncoder') engine = new LabelEncoderEngine();
   else if (node.type === 'OneHotEncoder') engine = new OneHotEncoderEngine(cfg.params?.dropFirst ?? false);
+  else if (node.type === 'DropColumns') engine = new DropColumnsEngine();
 
   if (!engine || input.train.rows.length === 0) {
     return { packet: input, engine: null, fittedParams: {} };
@@ -248,6 +249,8 @@ function executePreprocessor(
   let colIndices: number[];
   if (selectedCols.length > 0) {
     colIndices = selectedCols.map((c: string) => input.train.columns.indexOf(c)).filter((i: number) => i !== -1);
+  } else if (node.type === 'DropColumns') {
+    colIndices = [];
   } else {
     colIndices = input.train.columns.map((_, i) => i).filter(i => input.train.columns[i] !== targetCol);
   }
@@ -300,6 +303,7 @@ function executePreprocessor(
   if (node.type === 'StandardScaler') fittedParams = { means: engine.means, stds: engine.stds };
   else if (node.type === 'MinMaxScaler') fittedParams = { mins: engine.mins, maxs: engine.maxs };
   else if (node.type === 'SimpleImputer') fittedParams = { values: engine.values, strategy: engine.strategy };
+  else if (node.type === 'DropColumns') fittedParams = { droppedColumns: selectedCols };
 
   return {
     packet: { train: { columns: newColumns, rows: stitchTrain }, test: { columns: newColumns, rows: stitchTest }, meta: newMeta },

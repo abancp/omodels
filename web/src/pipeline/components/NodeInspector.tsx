@@ -289,6 +289,20 @@ export const THEORY_CATALOG: Record<string, TheoryInfo> = {
       'R-squared measures the proportion of variance explained. 1.0 is a perfect fit; 0.0 means the model is as simple as predicting the average.',
       'RMSE is in the same units as the target column, making it highly intuitive to communicate.'
     ]
+  },
+  DropColumns: {
+    definition: 'Feature Selection. Drop Columns structurally removes non-informative or redundant features from the data flow to reduce dimensionality and noise.',
+    math: 'X_new = X \\ {c_1, c_2, ...}',
+    workflow: [
+      'Identify target column to preserve under all conditions.',
+      'Select feature columns to be excluded from the dataset.',
+      'Filter out the selected columns structurally, updating both the feature names and the underlying data matrices.'
+    ],
+    hyperparams: {},
+    tips: [
+      'Dropping highly correlated or redundant features helps prevent multicollinearity issues in linear regression models.',
+      'Keep your dataset compact to avoid the curse of dimensionality and speed up model training.'
+    ]
   }
 };
 
@@ -363,16 +377,16 @@ export default function NodeInspector() {
         const allColumns: string[] = dsCfg?.csvHeaders || [];
         const targetCol = dsCfg?.targetColumn || '';
 
-        // For preprocessors: show ALL columns (including target) so user can choose
-        // For models: show only feature columns (exclude target)
+        // For preprocessors (except DropColumns): show ALL columns (including target) so user can choose
+        // For models and DropColumns: show only feature columns (exclude target)
         const snapshotCols = result?.inputSnapshot?.featureNames ?? [];
         let activeFeatures: string[];
         if (snapshotCols.length > 0) {
-          activeFeatures = node.family === 'preprocessor' ? snapshotCols : snapshotCols.filter((n: string) => n !== targetCol);
+          activeFeatures = (node.family === 'preprocessor' && node.type !== 'DropColumns') ? snapshotCols : snapshotCols.filter((n: string) => n !== targetCol);
         } else if (allColumns.length > 0) {
-          activeFeatures = node.family === 'preprocessor' ? allColumns : allColumns.filter((h: string) => h !== targetCol);
+          activeFeatures = (node.family === 'preprocessor' && node.type !== 'DropColumns') ? allColumns : allColumns.filter((h: string) => h !== targetCol);
         } else {
-          activeFeatures = featureNames.length ? featureNames : [];
+          activeFeatures = featureNames.length ? (node.type === 'DropColumns' ? featureNames.filter((n: string) => n !== targetCol) : featureNames) : [];
         }
 
         return <NodeConfig node={node} updateNodeConfig={updateNodeConfig} loadCSVToNode={loadCSVToNode} featureNames={activeFeatures} targetColumn={targetCol} />;
@@ -795,6 +809,25 @@ function NodePreview({ result, node }: { result: any; node: PipelineNode }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      );
+    }
+
+    if (node.type === 'DropColumns' && params.droppedColumns) {
+      return (
+        <div className="pipeline-inspector__section">
+          <div className="pipeline-inspector__section-title">Dropped Columns</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {params.droppedColumns.length > 0 ? (
+              params.droppedColumns.map((col: string, idx: number) => (
+                <span key={idx} className="pipeline-preview__pred-chip" style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  {col}
+                </span>
+              ))
+            ) : (
+              <span style={{ fontSize: 11, opacity: 0.6, fontStyle: 'italic' }}>No columns dropped</span>
+            )}
           </div>
         </div>
       );

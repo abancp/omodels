@@ -106,6 +106,19 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
     outputsTo: ['preprocessor', 'model'],
     maxIncoming: 1,
   },
+  {
+    family: 'preprocessor',
+    type: 'DropColumns',
+    label: 'Drop Columns',
+    icon: 'delete_sweep',
+    description: 'Remove specific feature columns from the dataset flow.',
+    color: '#10b981',
+    defaultConfig: { type: 'DropColumns', params: {}, targetColumns: [] },
+    acceptsFrom: ['dataset', 'split', 'preprocessor'],
+    outputsTo: ['preprocessor', 'model'],
+    maxIncoming: 1,
+  },
+
 
   // ─── MODELS ────────────────────────────────────────────────────────────────
   {

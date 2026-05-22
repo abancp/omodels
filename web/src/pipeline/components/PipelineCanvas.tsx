@@ -796,6 +796,16 @@ export default function PipelineCanvas() {
                           </div>
                         );
                       }
+                      if (hNode.type === 'DropColumns' && params.droppedColumns) {
+                        return (
+                          <div style={{ fontSize: 9, background: 'rgba(255,255,255,0.03)', padding: 4, borderRadius: 4 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 2 }}>Dropped Columns:</div>
+                            <div style={{ opacity: 0.8 }}>
+                              {params.droppedColumns.length > 0 ? params.droppedColumns.join(', ') : 'None'}
+                            </div>
+                          </div>
+                        );
+                      }
                       if (hNode.type === 'SimpleImputer' && params.values) {
                         return (
                           <div style={{ fontSize: 9, background: 'rgba(255,255,255,0.03)', padding: 4, borderRadius: 4 }}>
