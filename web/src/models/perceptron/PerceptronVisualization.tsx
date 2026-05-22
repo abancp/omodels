@@ -50,6 +50,7 @@ export default function PerceptronVisualization({
     converged: false
   }));
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; inputNodes: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
   
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-perceptron-epochTarget', 0);
   const [trained, setTrained] = usePersistentState('omodels-perceptron-trained', false);
@@ -315,7 +316,12 @@ export default function PerceptronVisualization({
   }, [dataset, numPoints, noise, inputNodes, numPerceptrons, resetState]);
 
   useEffect(() => { 
-    if (resetVersion === 0) return; 
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return; 
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     resetState();
     vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; 
     setVpVer(v => v + 1); 

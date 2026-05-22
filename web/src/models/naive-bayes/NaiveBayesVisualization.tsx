@@ -102,17 +102,39 @@ export default function NaiveBayesVisualization({
     setVpVer(v => v + 1);
   }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
+
   /* Generate dataset */
   useEffect(() => {
     if (dataset === 'custom' || dataset === 'import') return;
-    const pts = generateClassificationData(dataset, numPoints, noise);
-    setPoints(pts);
-    setNbState(null);
-  }, [dataset, numPoints, noise]);
+    
+    const changed = !prevParamsRef.current ||
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise;
+      
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise };
+      if (points && points.length > 0) return;
+    }
+    
+    prevParamsRef.current = { dataset, numPoints, noise };
+    if (changed || !points || points.length === 0) {
+      const pts = generateClassificationData(dataset, numPoints, noise);
+      setPoints(pts);
+      setNbState(null);
+    }
+  }, [dataset, numPoints, noise, setPoints]);
 
   /* Full reset */
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     setNbState(null);
     vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
     setVpVer(v => v + 1);

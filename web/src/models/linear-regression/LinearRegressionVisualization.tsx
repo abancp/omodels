@@ -68,6 +68,7 @@ export default function LinearRegressionVisualization({
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-linear-regression-epochTarget', 0);
   const [trained, setTrained] = usePersistentState('omodels-linear-regression-trained', false);
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
   
   // Real-time backpropagation tracker states
   const [slowMode, setSlowMode] = useState(false);
@@ -210,7 +211,12 @@ export default function LinearRegressionVisualization({
 
   /* Full reset (triggered by store resetVersion) */
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     setWeights({ m: 0.5, b: 0.5 });
     setLossHistory([]); setEpochTarget(0);
     setTrained(false); setInferResults([]);

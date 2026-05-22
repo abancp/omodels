@@ -11,6 +11,22 @@ import { usePlayground } from '../../store';
 import type { ParamDescriptor } from '../../models';
 import { PlaygroundDataEngine } from '../../models/dataEngine';
 
+const modelNames: Record<string, string> = {
+  'linear-regression': 'Linear Regression',
+  'logistic-regression': 'Logistic Regression',
+  'polynomial-regression': 'Polynomial Regression',
+  'perceptron': 'Perceptron',
+  'decision-tree': 'Decision Tree',
+  'svm': 'Support Vector Machine',
+  'naive-bayes': 'Naive Bayes',
+  'knn': 'K-Nearest Neighbors',
+  'random-forest': 'Random Forest',
+  'gradient-boosting': 'Gradient Boosting',
+  'kmeans': 'K-Means Clustering',
+  'dbscan': 'DBSCAN Clustering',
+  'gmm': 'Gaussian Mixture Model'
+};
+
 /* ─── Individual param renderers ─── */
 
 function SliderControl({
@@ -370,6 +386,44 @@ export default function ControlsPanel() {
   const omFileInputRef = useRef<HTMLInputElement>(null);
   const [showImportPopup, setShowImportPopup] = useState(false);
   const [importResult, setImportResult] = useState<import('../../models/dataEngine').ParseResult | null>(null);
+  const [pendingOMImport, setPendingOMImport] = useState<{
+    fileContent: string;
+    payload: any;
+  } | null>(null);
+
+  const handleImportDatasetOnly = useCallback(() => {
+    if (!pendingOMImport) return;
+    try {
+      const { payload } = pendingOMImport;
+      const foreignModelId = payload.activeModelId;
+      
+      const pointsKey = `omodels-${foreignModelId}-points`;
+      const pointsJSON = payload.localState?.[pointsKey];
+      if (!pointsJSON) {
+        throw new Error('No dataset found in the uploaded model file.');
+      }
+      
+      const currentPointsKey = `omodels-${activeModelId}-points`;
+      localStorage.setItem(currentPointsKey, pointsJSON);
+      
+      const currentWeightsKey = `omodels-${activeModelId}-weights`;
+      localStorage.removeItem(currentWeightsKey);
+      const currentLossKey = `omodels-${activeModelId}-lossHistory`;
+      localStorage.removeItem(currentLossKey);
+      const currentTrainedKey = `omodels-${activeModelId}-trained`;
+      localStorage.removeItem(currentTrainedKey);
+      
+      setDataset('import');
+      
+      const pts = JSON.parse(pointsJSON);
+      setImportedData(pts);
+      
+      setPendingOMImport(null);
+      alert('Dataset imported successfully! The model has been reset to an untrained state with this new dataset.');
+    } catch (err: any) {
+      alert(err.message || 'Failed to import dataset.');
+    }
+  }, [pendingOMImport, activeModelId, setDataset, setImportedData]);
 
   const handleOMUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -378,14 +432,23 @@ export default function ControlsPanel() {
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
-        loadModel(text);
+        const payload = JSON.parse(text);
+        if (payload.fileExtension !== '.om') {
+          throw new Error('Invalid file format. Must be an .om file.');
+        }
+        
+        if (payload.activeModelId !== activeModelId) {
+          setPendingOMImport({ fileContent: text, payload });
+        } else {
+          loadModel(text);
+        }
       } catch (err: any) {
         alert(err.message || 'Failed to load model file.');
       }
     };
     reader.readAsText(file);
     e.target.value = ''; // Reset file input
-  }, [loadModel]);
+  }, [loadModel, activeModelId]);
   const [importMapping, setImportMapping] = useState<{
     x: string;
     y: string;
@@ -1196,6 +1259,134 @@ export default function ControlsPanel() {
         onConfirm={() => { setShowResetConfirm(false); resetTraining(); }}
         onCancel={() => setShowResetConfirm(false)}
       />
+
+      {/* Different Model Detected Dialog */}
+      {pendingOMImport && (
+        <div style={overlayS} onClick={() => setPendingOMImport(null)}>
+          <div style={{ ...dialogS, width: 550 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <Icon name="warning" size={24} style={{ color: '#ffb74d' }} />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Different Model Detected</h3>
+            </div>
+            
+            <p style={{ fontSize: 13, margin: '0 0 16px', lineHeight: 1.5 }}>
+              The uploaded model file (.om) is for a <strong>{modelNames[pendingOMImport.payload.activeModelId] || pendingOMImport.payload.activeModelId}</strong> model, which is different from the currently active <strong>{modelNames[activeModelId] || activeModelId}</strong> model.
+            </p>
+
+            <div style={{
+              background: 'rgba(255, 183, 77, 0.04)',
+              border: '1px solid rgba(255, 183, 77, 0.15)',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 20
+            }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: '#ffb74d' }}>Uploaded Model Profile</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '6px', fontSize: 11 }}>
+                <span style={{ opacity: 0.6 }}>Dataset Name:</span>
+                <span>{pendingOMImport.payload.datasetId || 'N/A'}</span>
+                
+                <span style={{ opacity: 0.6 }}>Hyperparameters:</span>
+                <span>
+                  {Object.entries(pendingOMImport.payload.params || {})
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(', ')}
+                </span>
+                
+                <span style={{ opacity: 0.6 }}>Saved Performance:</span>
+                <span>
+                  {pendingOMImport.payload.liveMetrics
+                    ? Object.entries(pendingOMImport.payload.liveMetrics)
+                        .filter(([_, val]) => typeof val === 'number')
+                        .map(([k, v]) => `${k}: ${(v as number).toFixed(4)}`)
+                        .join(' | ')
+                    : 'N/A'}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 12, opacity: 0.7, margin: '0 0 20px' }}>
+              Choose how you would like to proceed with this model file:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: 'var(--c-primary, #cfbcff)',
+                  color: 'var(--c-on-primary, #1e1e2e)',
+                  fontWeight: 600,
+                  fontSize: 12,
+                  textAlign: 'left'
+                }}
+                onClick={() => {
+                  loadModel(pendingOMImport.fileContent);
+                  setPendingOMImport(null);
+                }}
+              >
+                <Icon name="swap_horiz" size={18} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <div style={{ fontWeight: 700 }}>Switch Model & Load Everything</div>
+                  <div style={{ fontSize: 10, opacity: 0.8, marginTop: 2 }}>
+                    Change active view to {modelNames[pendingOMImport.payload.activeModelId] || pendingOMImport.payload.activeModelId} and restore its full state.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--c-panel-border)',
+                  cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--c-on-surface)',
+                  fontWeight: 600,
+                  fontSize: 12,
+                  textAlign: 'left'
+                }}
+                onClick={handleImportDatasetOnly}
+              >
+                <Icon name="dataset" size={18} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <div style={{ fontWeight: 700 }}>Import Dataset Only</div>
+                  <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>
+                    Keep the current {modelNames[activeModelId] || activeModelId} model, but load the points/dataset from the uploaded file.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  padding: '10px',
+                  borderRadius: 8,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  color: 'var(--c-on-surface-variant)',
+                  fontSize: 12,
+                  fontWeight: 500
+                }}
+                onClick={() => setPendingOMImport(null)}
+              >
+                Cancel Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Import Error Toast */}
       {importError && !showImportPopup && (

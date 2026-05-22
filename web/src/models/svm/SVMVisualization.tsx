@@ -107,31 +107,54 @@ export default function SVMVisualization({
     setVpVer(v => v + 1);
   }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; kernel: string } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
+
   /* Generate dataset & reset model */
   useEffect(() => {
     if (dataset === 'custom' || dataset === 'import') return;
-    const pts = generateSVMData(dataset, numPoints, noise);
-    setPoints(pts);
-    const w = initWeights(kernel);
-    setWeights(w);
-    weightsRef.current = w;
-    const initLoss = [computeLoss(pts, w, kernel, cParam)];
-    setLossHistory(initLoss);
-    lossRef.current = initLoss;
-    setEpochTarget(0);
-    setTrained(false);
-    setInferResults([]);
-    setGradients(new Array(kernel === "poly2" ? 6 : 3).fill(0));
-    setGradHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
-    setWeightHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
-    vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
-    setVpVer(v => v + 1);
-    stepRef.current = 0;
-  }, [dataset, numPoints, noise, kernel, cParam]);
+    
+    const changed = !prevParamsRef.current ||
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise ||
+      prevParamsRef.current.kernel !== kernel;
+      
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise, kernel };
+      if (points && points.length > 0) return;
+    }
+    
+    prevParamsRef.current = { dataset, numPoints, noise, kernel };
+    if (changed || !points || points.length === 0) {
+      const pts = generateSVMData(dataset, numPoints, noise);
+      setPoints(pts);
+      const w = initWeights(kernel);
+      setWeights(w);
+      weightsRef.current = w;
+      const initLoss = [computeLoss(pts, w, kernel, cParam)];
+      setLossHistory(initLoss);
+      lossRef.current = initLoss;
+      setEpochTarget(0);
+      setTrained(false);
+      setInferResults([]);
+      setGradients(new Array(kernel === "poly2" ? 6 : 3).fill(0));
+      setGradHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
+      setWeightHistories(new Array(kernel === "poly2" ? 6 : 3).fill([]));
+      vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
+      setVpVer(v => v + 1);
+      stepRef.current = 0;
+    }
+  }, [dataset, numPoints, noise, kernel, cParam, setPoints]);
 
   /* Full reset */
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     const w = initWeights(kernel, Date.now() % 10000);
     setWeights(w);
     weightsRef.current = w;

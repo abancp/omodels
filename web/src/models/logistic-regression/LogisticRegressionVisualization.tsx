@@ -19,6 +19,7 @@ export default function LogisticRegressionVisualization({
   const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-logistic-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-logistic-regression-epochTarget', 0);
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; degree: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
 
   // Real-time backpropagation tracker states
   const [slowMode, setSlowMode] = useState(false);
@@ -149,7 +150,12 @@ export default function LogisticRegressionVisualization({
 
   /* Full reset */
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     const requiredLen = degree === 1 ? 3 : 6;
     setWeights(new Array(requiredLen).fill(0));
     setLossHistory([]); setEpochTarget(0);

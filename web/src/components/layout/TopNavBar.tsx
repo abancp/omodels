@@ -5,12 +5,12 @@ import { PlaygroundContext } from '../../store/PlaygroundStore';
 
 const NAV_TABS = [
   { id: 'playground', label: 'Playground' },
-  { id: 'builder', label: 'Builder' },
+  { id: 'pipeline', label: 'Pipeline' },
   { id: 'compare', label: 'Compare' },
   { id: 'datastudio', label: 'Data Studio' }
 ] as const;
 
-export type ViewType = 'playground' | 'datastudio' | 'builder' | 'compare';
+export type ViewType = 'playground' | 'datastudio' | 'pipeline' | 'compare';
 
 interface TopNavBarProps {
   onSearchClick: () => void;
@@ -33,11 +33,11 @@ export default function TopNavBar({ onSearchClick, activeView, onViewChange }: T
               key={tab.id}
               className={`topnav__tab ${tab.id === activeView ? 'topnav__tab--active' : ''}`}
               onClick={() => {
-                if (tab.id === 'playground' || tab.id === 'datastudio') {
+                if (tab.id === 'playground' || tab.id === 'datastudio' || tab.id === 'pipeline') {
                   onViewChange(tab.id);
                 }
               }}
-              style={{ cursor: (tab.id === 'playground' || tab.id === 'datastudio') ? 'pointer' : 'not-allowed', opacity: (tab.id === 'playground' || tab.id === 'datastudio') ? 1 : 0.5 }}
+              style={{ cursor: (tab.id === 'playground' || tab.id === 'datastudio' || tab.id === 'pipeline') ? 'pointer' : 'not-allowed', opacity: (tab.id === 'playground' || tab.id === 'datastudio' || tab.id === 'pipeline') ? 1 : 0.5 }}
             >
               <span>{tab.label}</span>
             </div>

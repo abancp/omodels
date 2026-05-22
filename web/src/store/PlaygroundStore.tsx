@@ -143,6 +143,7 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
   const [pendingModelSwitchId, setPendingModelSwitchId] = useState<string | null>(null);
 
   const isFirstLoad = useRef(true);
+  const isLoadingModelRef = useRef(false);
 
   /* Load model when activeModelId changes */
   useEffect(() => {
@@ -150,9 +151,9 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
     if (!m) return;
     setModel(m);
     
-    // Only use URL params on the very first load of the initial model.
-    // If switching models manually, always use defaults.
-    if (isFirstLoad.current) {
+    if (isLoadingModelRef.current) {
+      isLoadingModelRef.current = false;
+    } else if (isFirstLoad.current) {
       setParams(prev => Object.keys(prev).length > 0 ? prev : buildDefaults(m.params));
       setDatasetId(prev => prev || m.dataset.defaultDataset);
       setDatasetParams(prev => Object.keys(prev).length > 0 ? prev : buildDefaults(m.dataset.params));
@@ -222,6 +223,8 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
       throw new Error('Invalid file format. Must be an .om file.');
     }
     
+    isLoadingModelRef.current = true;
+    
     // Clear existing localState for the target model
     const prefix = `omodels-${payload.activeModelId}-`;
     const keysToRemove: string[] = [];
@@ -252,15 +255,35 @@ export function PlaygroundProvider({ children, initialModelId }: { children: Rea
   }, []);
 
   const forceSetActiveModel = useCallback((id: string) => {
+    if (activeModelId && activeModelId !== id) {
+      const prefix = `omodels-${activeModelId}-`;
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
     setActiveModelIdRaw(id);
     setPendingModelSwitchId(null);
-  }, []);
+  }, [activeModelId]);
 
   const setActiveModel = useCallback((id: string) => {
     if (id === activeModelId) return;
     if (checkIfModelTrained(activeModelId)) {
       setPendingModelSwitchId(id);
     } else {
+      const prefix = `omodels-${activeModelId}-`;
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
       setActiveModelIdRaw(id);
     }
   }, [activeModelId]);

@@ -93,8 +93,43 @@ export default function DBSCANVisualization({
     setVpVer(v => v + 1);
   }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { if (dataset === 'custom' || dataset === 'import') return; setPoints(generateClusteringData(dataset, numPoints, noise)); setDbState(null); setInferResults([]); }, [dataset, numPoints, noise]);
-  useEffect(() => { if (resetVersion === 0) return; setDbState(null); setInferResults([]); vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 }; setVpVer(v => v + 1); }, [resetVersion]);
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
+
+  useEffect(() => {
+    if (dataset === 'custom' || dataset === 'import') return;
+    
+    const changed = !prevParamsRef.current ||
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise;
+      
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise };
+      if (points && points.length > 0) return;
+    }
+    
+    prevParamsRef.current = { dataset, numPoints, noise };
+    if (changed || !points || points.length === 0) {
+      setPoints(generateClusteringData(dataset, numPoints, noise));
+      setDbState(null);
+      setInferResults([]);
+    }
+  }, [dataset, numPoints, noise, points]);
+
+  useEffect(() => {
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
+    setDbState(null);
+    setInferResults([]);
+    vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
+    setVpVer(v => v + 1);
+  }, [resetVersion]);
+
   useEffect(() => { setDbState(null); }, [eps, minPts, metric]); // reset if params change
   
   // Mouse handlers

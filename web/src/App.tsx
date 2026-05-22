@@ -3,6 +3,8 @@ import { PlaygroundProvider } from './store';
 import { registerKNN, registerLinearRegression, registerPolynomialRegression, registerLogisticRegression, registerSVM, registerNaiveBayes, registerDecisionTree, registerRandomForest, registerGBM, registerKMeans, registerDBSCAN, registerGMM, registerPerceptron, registerMLP, registerActivations } from './models';
 import PlaygroundLayout from './components/PlaygroundLayout';
 import DataStudioLayout from './components/DataStudioLayout';
+import PipelineLayout from './pipeline/PipelineLayout';
+import './pipeline/Pipeline.css';
 
 /* ─── Register all models ─── */
 registerLinearRegression();
@@ -32,6 +34,8 @@ export default function App() {
       <PlaygroundProvider initialModelId="linear-regression">
         {currentView === 'playground' ? (
           <PlaygroundLayout onViewChange={setCurrentView} activeView={currentView} />
+        ) : currentView === 'pipeline' ? (
+          <PipelineLayout onViewChange={setCurrentView} activeView={currentView} />
         ) : (
           <DataStudioLayout onViewChange={setCurrentView} activeView={currentView} />
         )}

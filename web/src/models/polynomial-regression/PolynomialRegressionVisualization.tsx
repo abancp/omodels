@@ -16,6 +16,7 @@ export default function PolynomialRegressionVisualization({
   const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-polynomial-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-polynomial-regression-epochTarget', 0);
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; degree: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
 
   // Real-time backpropagation tracker states
   const [slowMode, setSlowMode] = useState(false);
@@ -169,7 +170,12 @@ export default function PolynomialRegressionVisualization({
 
   /* Full reset (triggered by store resetVersion) */
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     setWeights(new Array(degree + 1).fill(0).map((_, i) => i === 0 ? 0.5 : (i === 1 ? 0.5 : 0)));
     setLossHistory([]); setEpochTarget(0);
     setGradients(new Array(degree + 1).fill(0));

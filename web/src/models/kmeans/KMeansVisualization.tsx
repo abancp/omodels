@@ -58,16 +58,38 @@ export default function KMeansVisualization({
     setVpVer(v => v + 1);
   }, [importVersion, importedData, dataset]);
 
-  useEffect(() => {
-    if (dataset === 'custom' || dataset === 'import') return;
-    setPoints(generateClusteringData(dataset, numPoints, noise));
-    setKmState(null);
-    setElbowData(null);
-    setInferResults([]);
-  }, [dataset, numPoints, noise]);
+  const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
 
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (dataset === 'custom' || dataset === 'import') return;
+    
+    const changed = !prevParamsRef.current ||
+      prevParamsRef.current.dataset !== dataset ||
+      prevParamsRef.current.numPoints !== numPoints ||
+      prevParamsRef.current.noise !== noise;
+      
+    if (!prevParamsRef.current) {
+      prevParamsRef.current = { dataset, numPoints, noise };
+      if (points && points.length > 0) return;
+    }
+    
+    prevParamsRef.current = { dataset, numPoints, noise };
+    if (changed || !points || points.length === 0) {
+      setPoints(generateClusteringData(dataset, numPoints, noise));
+      setKmState(null);
+      setElbowData(null);
+      setInferResults([]);
+    }
+  }, [dataset, numPoints, noise, points]);
+
+  useEffect(() => {
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     setKmState(null);
     setElbowData(null);
     setInferResults([]);

@@ -15,6 +15,7 @@ export default function DecisionTreeVisualization({
   const [points, setPoints] = usePersistentState<Point[]>('omodels-decision-tree-points', []);
   const [dtState, setDtState] = usePersistentState<DecisionTreeState | null>('omodels-decision-tree-dtState', null);
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
+  const prevResetVersionRef = useRef(resetVersion);
 
   const vpRef = useRef({ xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 });
   const [vpVer, setVpVer] = useState(0);
@@ -83,7 +84,12 @@ export default function DecisionTreeVisualization({
   }, [dataset, numPoints, noise]);
 
   useEffect(() => {
-    if (resetVersion === 0) return;
+    if (resetVersion === 0 || resetVersion === prevResetVersionRef.current) {
+      prevResetVersionRef.current = resetVersion;
+      return;
+    }
+    prevResetVersionRef.current = resetVersion;
+    
     setDtState(null); setInferResults([]);
     vpRef.current = { xMin: -0.1, xMax: 1.1, yMin: -0.1, yMax: 1.1 };
     setVpVer(v => v + 1); setHoverPt(null);
