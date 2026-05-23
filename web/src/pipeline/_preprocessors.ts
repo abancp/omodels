@@ -28,6 +28,9 @@ export class StandardScalerEngine {
   transform(X: number[][]): number[][] {
     return X.map(row => row.map((v, j) => (v - this.means[j]) / (this.stds[j] || 1)));
   }
+  inverse_transform(X: number[][]): number[][] {
+    return X.map(row => row.map((v, j) => v * (this.stds[j] || 1) + this.means[j]));
+  }
 }
 
 export class MinMaxScalerEngine {
@@ -46,6 +49,12 @@ export class MinMaxScalerEngine {
     return X.map(row => row.map((v, j) => {
       const range = this.maxs[j] - this.mins[j];
       return range === 0 ? 0 : (v - this.mins[j]) / range;
+    }));
+  }
+  inverse_transform(X: number[][]): number[][] {
+    return X.map(row => row.map((v, j) => {
+      const range = this.maxs[j] - this.mins[j];
+      return range === 0 ? this.mins[j] : (v * range) + this.mins[j];
     }));
   }
 }
@@ -74,14 +83,21 @@ export class SimpleImputerEngine {
 
 export class LabelEncoderEngine {
   classes: Record<number, Record<string, number>> = {};
+  inverse_classes: Record<number, Record<number, string>> = {};
+  
   fit(X: any[][]) {
     if (X.length === 0) return;
     for (let j = 0; j < X[0].length; j++) {
       this.classes[j] = {};
+      this.inverse_classes[j] = {};
       let id = 0;
       for (let i = 0; i < X.length; i++) {
         const val = String(X[i][j]);
-        if (this.classes[j][val] === undefined) this.classes[j][val] = id++;
+        if (this.classes[j][val] === undefined) {
+          this.classes[j][val] = id;
+          this.inverse_classes[j][id] = val;
+          id++;
+        }
       }
     }
   }
@@ -89,6 +105,12 @@ export class LabelEncoderEngine {
     return X.map(row => row.map((val, j) => {
       const strVal = String(val);
       return this.classes[j]?.[strVal] ?? 0;
+    }));
+  }
+  inverse_transform(X: number[][]): any[][] {
+    return X.map(row => row.map((val, j) => {
+      const rounded = Math.round(val);
+      return this.inverse_classes[j]?.[rounded] ?? val;
     }));
   }
 }

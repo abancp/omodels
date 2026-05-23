@@ -23,6 +23,7 @@ export type NodeFamily =
   | 'split'
   | 'preprocessor'
   | 'model'
+  | 'stacker'
   | 'evaluation'
   | 'output';
 
@@ -77,7 +78,8 @@ export const CONNECTION_RULES: Record<NodeFamily, NodeFamily[]> = {
   dataset:      [],                                         // no inputs
   split:        ['dataset'],                                // only from dataset
   preprocessor: ['dataset', 'split', 'preprocessor'],      // data chain
-  model:        ['dataset', 'split', 'preprocessor'],      // data in
+  model:        ['dataset', 'split', 'preprocessor', 'stacker'], // data in (including stacked features)
+  stacker:      ['model'],                                  // collects model predictions
   evaluation:   ['model'],                                  // predictions in
   output:       ['model'],                                  // predictions in
 };
@@ -87,7 +89,8 @@ export const OUTPUT_RULES: Record<NodeFamily, NodeFamily[]> = {
   dataset:      ['split', 'preprocessor', 'model'],
   split:        ['preprocessor', 'model'],
   preprocessor: ['preprocessor', 'model'],
-  model:        ['evaluation', 'output'],
+  model:        ['evaluation', 'output', 'stacker'],        // models can feed stacker
+  stacker:      ['model', 'evaluation', 'output'],          // stacker feeds meta-model
   evaluation:   [],                                         // terminal
   output:       [],                                         // terminal
 };
@@ -122,6 +125,13 @@ export interface ModelConfig {
   params: Record<string, unknown>;
 }
 
+export interface StackerConfig {
+  /** How to combine predictions: 'stack' puts each model's output as a feature column */
+  method: 'stack';
+  /** Whether to also include original features alongside stacked predictions */
+  passthrough: boolean;
+}
+
 export interface EvaluationConfig {
   type: string;
 }
@@ -136,6 +146,7 @@ export type NodeConfig =
   | SplitConfig
   | PreprocessorConfig
   | ModelConfig
+  | StackerConfig
   | EvaluationConfig
   | OutputConfig;
 

@@ -286,6 +286,23 @@
   50% { border-color: color-mix(in srgb, var(--c-primary) 40%, transparent); }
 }
 
+.pipeline-toolbar__btn--stop {
+  color: #ef4444;
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  font-weight: 600;
+  animation: pulse-stop 1s ease-in-out infinite;
+}
+
+.pipeline-toolbar__btn--stop:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+@keyframes pulse-stop {
+  0%, 100% { border-color: #ef4444; }
+  50% { border-color: rgba(239, 68, 68, 0.4); }
+}
+
 /* ─── Workspace ───────────────────────────────────────────────── */
 
 .pipeline-workspace {

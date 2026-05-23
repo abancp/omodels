@@ -37,7 +37,7 @@ export class TFLinearRegressionEngine {
     this.batchSize = batchSize;
   }
 
-  async fit(X: number[][], y: number[], onProgress?: (msg: string) => void) {
+  async fit(X: number[][], y: number[], onProgress?: (msg: string) => void, signal?: AbortSignal) {
     if (X.length === 0) return;
     const numFeatures = X[0].length;
 
@@ -64,6 +64,7 @@ export class TFLinearRegressionEngine {
         shuffle: true,
         callbacks: {
           onEpochEnd: (epoch, logs) => {
+            if (signal?.aborted) throw new Error('Training cancelled by user');
             if (onProgress && epoch % Math.max(1, Math.ceil(this.epochs / 10)) === 0) {
               onProgress(`LinearReg Epoch ${epoch + 1}/${this.epochs} — loss: ${logs?.loss?.toFixed(4)}`);
             }
@@ -103,7 +104,7 @@ export class TFLogisticRegressionEngine {
     this.batchSize = batchSize;
   }
 
-  async fit(X: number[][], y: number[], onProgress?: (msg: string) => void) {
+  async fit(X: number[][], y: number[], onProgress?: (msg: string) => void, signal?: AbortSignal) {
     if (X.length === 0) return;
     this.classes = [...new Set(y)].sort((a, b) => a - b);
     this.numClasses = this.classes.length;
@@ -135,6 +136,7 @@ export class TFLogisticRegressionEngine {
         shuffle: true,
         callbacks: {
           onEpochEnd: (epoch, logs) => {
+            if (signal?.aborted) throw new Error('Training cancelled by user');
             if (onProgress && epoch % Math.max(1, Math.ceil(this.epochs / 10)) === 0) {
               onProgress(`LogisticReg Epoch ${epoch + 1}/${this.epochs} — loss: ${logs?.loss?.toFixed(4)}, acc: ${logs?.acc?.toFixed(3)}`);
             }
@@ -201,7 +203,7 @@ export class TFMLPEngine {
     this.batchSize = batchSize;
   }
 
-  async fit(X: number[][], y: number[], onProgress?: (msg: string) => void) {
+  async fit(X: number[][], y: number[], onProgress?: (msg: string) => void, signal?: AbortSignal) {
     if (X.length === 0) return;
     this.classes = [...new Set(y)].sort((a, b) => a - b);
     const numFeatures = X[0].length;
@@ -250,6 +252,7 @@ export class TFMLPEngine {
         shuffle: true,
         callbacks: {
           onEpochEnd: (epoch, logs) => {
+            if (signal?.aborted) throw new Error('Training cancelled by user');
             if (logs) this.lossHistory.push(logs.loss);
             if (onProgress && epoch % Math.max(1, Math.ceil(this.epochs / 10)) === 0) {
               onProgress(`MLP Epoch ${epoch + 1}/${this.epochs} — loss: ${logs?.loss?.toFixed(4)}`);

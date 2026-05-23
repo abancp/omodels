@@ -15,6 +15,7 @@ export default function PolynomialRegressionVisualization({
   const [weights, setWeights] = usePersistentState<Weights>('omodels-polynomial-regression-weights', [0.5, 0.5, 0]); // Init with degree 2
   const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-polynomial-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-polynomial-regression-epochTarget', 0);
+  const [persistedParams, setPersistedParams] = usePersistentState('omodels-polynomial-regression-persisted-params', { dataset: '', numPoints: 0, noise: 0, degree: 1 });
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; degree: number } | null>(null);
   const prevResetVersionRef = useRef(resetVersion);
 
@@ -132,17 +133,30 @@ export default function PolynomialRegressionVisualization({
 
   /* Generate dataset */
   useEffect(() => {
-    if (!prevParamsRef.current) {
+    const isInitial = !prevParamsRef.current;
+    let shouldRegenerate = false;
+    
+    if (isInitial) {
       prevParamsRef.current = { dataset, numPoints, noise, degree };
-      if (points && points.length > 0) return;
+      if (points.length === 0 || 
+          persistedParams.dataset !== dataset || 
+          persistedParams.numPoints !== numPoints || 
+          persistedParams.noise !== noise ||
+          persistedParams.degree !== degree) {
+        shouldRegenerate = true;
+      }
+    } else {
+      const changed = 
+        prevParamsRef.current!.dataset !== dataset ||
+        prevParamsRef.current!.numPoints !== numPoints ||
+        prevParamsRef.current!.noise !== noise ||
+        prevParamsRef.current!.degree !== degree;
+      prevParamsRef.current = { dataset, numPoints, noise, degree };
+      if (changed) shouldRegenerate = true;
     }
-    const changed = 
-      prevParamsRef.current.dataset !== dataset ||
-      prevParamsRef.current.numPoints !== numPoints ||
-      prevParamsRef.current.noise !== noise ||
-      prevParamsRef.current.degree !== degree;
-    prevParamsRef.current = { dataset, numPoints, noise, degree };
-    if (!changed) return;
+
+    if (!shouldRegenerate) return;
+    setPersistedParams({ dataset, numPoints, noise, degree });
 
     if (dataset === 'custom' || dataset === 'import') return;
     const pts = generatePolyData(dataset, numPoints, noise);

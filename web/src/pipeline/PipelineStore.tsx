@@ -56,7 +56,8 @@ interface PipelineContextValue {
   loadCSVToNode: (nodeId: string, text: string, filename: string) => void;
   /** Check if a proposed connection is valid */
   canConnect: (sourceId: string, targetId: string) => boolean;
-  testPrediction: (inputValues: Record<string, number>) => number | null;
+  stopPipeline: () => void;
+  testPrediction: (inputValues: Record<string, number>) => { value: number; rawValue: string | number } | null;
 }
 
 const PipelineContext = createContext<PipelineContextValue | null>(null);
@@ -75,6 +76,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const fittedEnginesRef = useRef<Record<string, any>>({});
   const topOrderRef = useRef<string[]>([]);
   const nodePacketsRef = useRef<Record<string, DataPacket>>({});
+  const abortRef = useRef<AbortController | null>(null);
 
   const addNode = useCallback((node: PipelineNode) => {
     setPipeline(p => ({ ...p, nodes: [...p.nodes, node], state: 'draft' }));
@@ -182,6 +184,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setExecutionLog([]);
     setNodeResults({});
     setFittedEngines({});
+    const abort = new AbortController();
+    abortRef.current = abort;
     setPipeline(p => ({
       ...p,
       state: 'training',
@@ -211,6 +215,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           }));
         },
         (msg) => setExecutionLog(prev => [...prev, msg]),
+        abort.signal,
       );
 
       fittedEnginesRef.current = engines;
@@ -231,12 +236,24 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setPipeline(p => ({ ...p, state: 'trained', metrics: allMetrics }));
       setExecutionLog(prev => [...prev, '✓ Pipeline training complete!']);
     } catch (e: any) {
-      setPipeline(p => ({ ...p, state: 'error' }));
-      setExecutionLog(prev => [...prev, `✗ Error: ${e.message}`]);
+      if (e.message === 'Training cancelled by user') {
+        setPipeline(p => ({ ...p, state: 'draft' }));
+        setExecutionLog(prev => [...prev, '⚠ Training stopped by user']);
+      } else {
+        setPipeline(p => ({ ...p, state: 'error' }));
+        setExecutionLog(prev => [...prev, `✗ Error: ${e.message}`]);
+      }
     } finally {
+      abortRef.current = null;
       setIsRunning(false);
     }
   }, [pipeline]);
+
+  const stopPipeline = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+  }, []);
 
   const resetPipeline = useCallback(() => {
     setPipeline(p => ({
@@ -256,7 +273,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     nodePacketsRef.current = {};
   }, []);
 
-  const testPrediction = useCallback((inputValues: Record<string, number>): number | null => {
+  const testPrediction = useCallback((inputValues: Record<string, number>): { value: number; rawValue: string | number } | null => {
     const engines = fittedEnginesRef.current;
     if (Object.keys(engines).length === 0) return null;
     return runInference(pipeline, inputValues, engines, nodePacketsRef.current);
@@ -305,7 +322,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       addNode, removeNode, updateNode, updateNodeConfig, moveNode, selectNode,
       addEdge, removeEdge,
       renamePipeline, runPipeline, resetPipeline, savePipeline, loadPipeline,
-      loadCSVToNode, canConnect, testPrediction, rawFeatureNames,
+      loadCSVToNode, canConnect, testPrediction, rawFeatureNames, stopPipeline,
     }}>
       {children}
     </PipelineContext.Provider>

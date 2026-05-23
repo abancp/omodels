@@ -303,6 +303,24 @@ export const THEORY_CATALOG: Record<string, TheoryInfo> = {
       'Dropping highly correlated or redundant features helps prevent multicollinearity issues in linear regression models.',
       'Keep your dataset compact to avoid the curse of dimensionality and speed up model training.'
     ]
+  },
+  StackPredictions: {
+    definition: 'Ensemble node. Collects predictions from multiple base models and stacks them as new feature columns to train a meta-learner (stacked generalization).',
+    math: 'X_meta = [f₁(X), f₂(X), ..., fₖ(X)]',
+    workflow: [
+      'Receive trained predictions from each connected base model.',
+      'Create a new feature matrix where each column is one model\'s prediction.',
+      'Optionally pass through original features alongside stacked predictions (passthrough mode).',
+      'Feed the stacked features to a downstream meta-model for final prediction.'
+    ],
+    hyperparams: {
+      'Passthrough': 'If enabled, original features are included alongside stacked predictions, giving the meta-model access to both raw and predicted features.'
+    },
+    tips: [
+      'Stacking works best when base models are diverse (e.g., mixing tree-based and linear models).',
+      'Use a simple meta-model (like Linear Regression) to avoid overfitting the stacked features.',
+      'For best results, use cross-validated predictions for stacking instead of direct train predictions.'
+    ]
   }
 };
 
@@ -583,6 +601,7 @@ function NodeConfig({ node, updateNodeConfig, loadCSVToNode, featureNames, targe
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 160, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' }}>
                 {featureNames.map((h: string) => {
                   const isActive = cfg.targetColumns?.includes(h);
+                  const isTarget = h === targetColumn;
                   return (
                     <label key={h} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, cursor: 'pointer', color: isActive ? '#fff' : 'var(--c-on-surface-variant)' }}>
                       <input
@@ -596,6 +615,7 @@ function NodeConfig({ node, updateNodeConfig, loadCSVToNode, featureNames, targe
                         style={{ cursor: 'pointer', accentColor: 'var(--c-primary)' }}
                       />
                       {h}
+                      {isTarget && <span style={{ fontSize: 9, padding: '1px 4px', background: 'var(--c-primary-dark)', color: 'var(--c-primary)', borderRadius: 3, marginLeft: 'auto' }}>TARGET</span>}
                     </label>
                   );
                 })}
@@ -691,6 +711,21 @@ function NodeConfig({ node, updateNodeConfig, loadCSVToNode, featureNames, targe
       })()}
 
 
+
+      {/* STACKER (ENSEMBLE) */}
+      {node.family === 'stacker' && (
+        <>
+          <div className="pipeline-inspector__section">
+            <div className="pipeline-inspector__section-title">Stacking Configuration</div>
+            <Field label="Passthrough" tooltip="Include original features alongside stacked predictions for the meta-model.">
+              <Toggle checked={cfg.passthrough ?? false} onChange={v => updateNodeConfig(node.id, { passthrough: v })} />
+            </Field>
+            <div style={{ padding: '8px 12px', fontSize: 10, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
+              Connect multiple trained models into this node. Their predictions become new feature columns for a downstream meta-learner.
+            </div>
+          </div>
+        </>
+      )}
 
       {node.error && (
         <div className="pipeline-inspector__error">{node.error}</div>
@@ -1130,10 +1165,10 @@ function SnapshotTable({ label, snapshot, color }: { label: string; snapshot: an
 // ── Interface Tab (test predictions) ─────────────────────────────────────────
 
 function NodeInterface({ isTrained, featureNames, testPrediction, pipeline }: {
-  isTrained: boolean; featureNames: string[]; testPrediction: (v: Record<string, number>) => number | null; pipeline: any;
+  isTrained: boolean; featureNames: string[]; testPrediction: (v: Record<string, number>) => { value: number; rawValue: string | number } | null; pipeline: any;
 }) {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [prediction, setPrediction] = useState<number | null>(null);
+  const [prediction, setPrediction] = useState<{ value: number; rawValue: string | number } | null>(null);
   const [hasRun, setHasRun] = useState(false);
 
   const handlePredict = () => {
@@ -1208,11 +1243,16 @@ function NodeInterface({ isTrained, featureNames, testPrediction, pipeline }: {
             <div className="pipeline-interface__result">
               <div className="pipeline-interface__result-label">Prediction</div>
               <div className="pipeline-interface__result-value">
-                {typeof prediction === 'number' ? prediction.toFixed(4) : String(prediction)}
+                {typeof prediction.value === 'number' ? prediction.value.toFixed(4) : String(prediction.value)}
               </div>
-              {isClassification && (
+              {prediction.rawValue !== prediction.value && (
+                <div style={{ fontSize: 11, color: 'var(--c-primary)', fontWeight: 600, marginTop: 4, background: 'var(--c-primary-dark)', padding: '4px 8px', borderRadius: 4, textAlign: 'center' }}>
+                  Decoded: {typeof prediction.rawValue === 'number' ? prediction.rawValue.toFixed(4) : String(prediction.rawValue)}
+                </div>
+              )}
+              {isClassification && prediction.rawValue === prediction.value && (
                 <div className="pipeline-interface__result-class">
-                  Class {Math.round(prediction)}
+                  Class {Math.round(prediction.value)}
                 </div>
               )}
             </div>

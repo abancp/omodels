@@ -10,7 +10,7 @@ import type { NodeFamily } from '../PipelineTypes';
 import Icon from '../../components/common/Icon';
 import { THEORY_CATALOG } from './NodeInspector';
 
-const FAMILIES: NodeFamily[] = ['dataset', 'split', 'preprocessor', 'model', 'evaluation', 'output'];
+const FAMILIES: NodeFamily[] = ['dataset', 'split', 'preprocessor', 'model', 'stacker', 'evaluation', 'output'];
 
 export default function NodePalette() {
   const [search, setSearch] = useState('');
@@ -96,20 +96,7 @@ export default function NodePalette() {
         )}
       </div>
 
-      <div className="pipeline-palette__footer">
-        <div className="pipeline-palette__tip">
-          <Icon name="touch_app" size={12} />
-          <span>Drag nodes onto canvas</span>
-        </div>
-        <div className="pipeline-palette__tip">
-          <Icon name="cable" size={12} />
-          <span>Drag output → input ports</span>
-        </div>
-        <div className="pipeline-palette__tip">
-          <Icon name="alt_route" size={12} />
-          <span>Alt+drag or scroll to pan</span>
-        </div>
-      </div>
+
 
       {/* RENDER THE DETAILED HOVER TOOLTIP */}
       {hoveredNode && (

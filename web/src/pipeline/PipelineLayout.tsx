@@ -19,7 +19,7 @@ interface PipelineLayoutProps {
 }
 
 function PipelineWorkspace({ activeView, onViewChange }: PipelineLayoutProps) {
-  const { pipeline, runPipeline, resetPipeline, savePipeline, loadPipeline, isRunning, renamePipeline } = usePipeline();
+  const { pipeline, runPipeline, resetPipeline, savePipeline, loadPipeline, isRunning, renamePipeline, stopPipeline } = usePipeline();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(true);
   const [editingName, setEditingName] = useState(false);
@@ -110,18 +110,25 @@ function PipelineWorkspace({ activeView, onViewChange }: PipelineLayoutProps) {
             <span>Reset</span>
           </button>
 
-          <button
-            className={`pipeline-toolbar__btn pipeline-toolbar__btn--run ${isRunning ? 'pipeline-toolbar__btn--running' : ''}`}
-            onClick={runPipeline}
-            disabled={isRunning}
-            title="Run pipeline"
-          >
-            {isRunning ? (
-              <><Icon name="hourglass_empty" size={14} /><span>Running…</span></>
-            ) : (
-              <><Icon name="play_arrow" size={14} /><span>Run Pipeline</span></>
-            )}
-          </button>
+          {isRunning ? (
+            <button
+              className="pipeline-toolbar__btn pipeline-toolbar__btn--stop"
+              onClick={stopPipeline}
+              title="Stop training"
+            >
+              <Icon name="stop_circle" size={14} />
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              className="pipeline-toolbar__btn pipeline-toolbar__btn--run"
+              onClick={runPipeline}
+              title="Run pipeline"
+            >
+              <Icon name="play_arrow" size={14} />
+              <span>Run Pipeline</span>
+            </button>
+          )}
         </div>
       </div>
 

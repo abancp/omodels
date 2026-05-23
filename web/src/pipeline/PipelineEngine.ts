@@ -314,7 +314,7 @@ function executePreprocessor(
 // ─── Execute Model node ──────────────────────────────────────────────────────
 
 async function executeModel(
-  node: PipelineNode, input: DataPacket, onProgress?: (msg: string) => void
+  node: PipelineNode, input: DataPacket, onProgress?: (msg: string) => void, signal?: AbortSignal
 ): Promise<{ packet: DataPacket; engine: any; fitted: Record<string, unknown>; predictions: number[] }> {
   const cfg = node.config as any;
   const targetCol = input.meta.targetColumn;
@@ -371,7 +371,7 @@ async function executeModel(
       throw new Error(`Unknown model type: ${node.type}`);
   }
 
-  await engine.fit(xTrain, yTrain, onProgress);
+  await engine.fit(xTrain, yTrain, onProgress, signal);
 
   const predictions = engine.predict(xTest.length > 0 ? xTest : xTrain);
   const probabilities = engine.predictProba ? engine.predictProba(xTest.length > 0 ? xTest : xTrain) : undefined;
@@ -391,6 +391,7 @@ export async function executePipeline(
   onNodeStart: (id: string) => void,
   onNodeDone: (id: string, result: NodeExecutionResult) => void,
   onProgress: (msg: string) => void,
+  signal?: AbortSignal,
 ): Promise<{ results: Record<string, NodeExecutionResult>; fittedEngines: Record<string, any>; featureNames: string[]; nodePackets: Record<string, DataPacket> }> {
   const { nodes, edges } = pipeline;
   const order = topologicalSort(nodes, edges);
@@ -403,6 +404,7 @@ export async function executePipeline(
   const nodePackets: Record<string, DataPacket> = {};
 
   for (const nodeId of order) {
+    if (signal?.aborted) throw new Error('Training cancelled by user');
     const node = nodeMap.get(nodeId)!;
     onNodeStart(nodeId);
     onProgress(`Processing: ${node.label}…`);
@@ -436,9 +438,92 @@ export async function executePipeline(
       }
 
       // ─── MODEL ─────────────────────────────────────────────────
+      // ─── STACKER ─────────────────────────────────────────────
+      else if (node.family === 'stacker') {
+        const parentEdges = edges.filter(e => e.target === nodeId);
+        const parentPackets = parentEdges.map(e => nodePackets[e.source]).filter(Boolean);
+        if (parentPackets.length === 0) throw new Error('Stacker has no model inputs');
+        const cfg = node.config as any;
+        const passthrough = cfg.passthrough ?? false;
+
+        // Collect predictions from each parent model as columns
+        const basePkt = parentPackets[0];
+        const targetCol = basePkt.meta.targetColumn;
+        const tIdx = basePkt.test.columns.indexOf(targetCol);
+        const yTest = tIdx >= 0 ? basePkt.test.rows.map(r => Number(r[tIdx])) : [];
+        const nTest = basePkt.test.rows.length;
+        const nTrain = basePkt.train.rows.length;
+
+        // Stack train predictions (re-predict on train set for stacking)
+        const stackTrainCols: number[][] = [];
+        const stackTestCols: number[][] = [];
+        const predColNames: string[] = [];
+        for (let pi = 0; pi < parentEdges.length; pi++) {
+          const srcId = parentEdges[pi].source;
+          const eng = fittedEngines[srcId];
+          const pkt = nodePackets[srcId];
+          if (!eng || !pkt) continue;
+          const srcTarget = pkt.meta.targetColumn;
+          const srcFeatIdx = pkt.train.columns.map((c, i) => c !== srcTarget ? i : -1).filter(i => i !== -1);
+          const xTr = pkt.train.rows.map(row => srcFeatIdx.map(i => Number(row[i])));
+          const xTe = pkt.test.rows.map(row => srcFeatIdx.map(i => Number(row[i])));
+          const trainPreds = eng.predict(xTr);
+          const testPreds = eng.predict(xTe);
+          stackTrainCols.push(trainPreds);
+          stackTestCols.push(testPreds);
+          const srcNode = nodeMap.get(srcId);
+          predColNames.push(srcNode ? `pred_${srcNode.label.replace(/\s+/g,'_')}` : `pred_${pi}`);
+        }
+
+        let stackTrainRows: any[][];
+        let stackTestRows: any[][];
+        let stackColumns: string[];
+
+        if (passthrough) {
+          // Include original features + stacked predictions
+          const origFeats = basePkt.meta.featureColumns;
+          const origFeatIdx = origFeats.map(c => basePkt.train.columns.indexOf(c)).filter(i => i !== -1);
+          stackColumns = [...origFeats, ...predColNames, targetCol];
+          stackTrainRows = Array.from({ length: nTrain }, (_, r) => [
+            ...origFeatIdx.map(i => basePkt.train.rows[r][i]),
+            ...stackTrainCols.map(col => col[r] ?? 0),
+            tIdx >= 0 ? basePkt.train.rows[r][tIdx] : 0,
+          ]);
+          stackTestRows = Array.from({ length: nTest }, (_, r) => [
+            ...origFeatIdx.map(i => basePkt.test.rows[r]?.[i] ?? 0),
+            ...stackTestCols.map(col => col[r] ?? 0),
+            yTest[r] ?? 0,
+          ]);
+        } else {
+          stackColumns = [...predColNames, targetCol];
+          stackTrainRows = Array.from({ length: nTrain }, (_, r) => [
+            ...stackTrainCols.map(col => col[r] ?? 0),
+            tIdx >= 0 ? basePkt.train.rows[r][tIdx] : 0,
+          ]);
+          stackTestRows = Array.from({ length: nTest }, (_, r) => [
+            ...stackTestCols.map(col => col[r] ?? 0),
+            yTest[r] ?? 0,
+          ]);
+        }
+
+        const stackFeatures = stackColumns.filter(c => c !== targetCol);
+        nodePackets[nodeId] = {
+          train: { columns: stackColumns, rows: stackTrainRows },
+          test: { columns: stackColumns, rows: stackTestRows },
+          meta: {
+            targetColumn: targetCol,
+            taskType: basePkt.meta.taskType,
+            featureColumns: stackFeatures,
+            schema: { columns: stackFeatures.map(n => ({ name: n, type: 'numeric' as const })), shape: [stackTrainRows.length, stackFeatures.length], target: targetCol, taskType: basePkt.meta.taskType === 'auto' ? undefined : basePkt.meta.taskType },
+          },
+        };
+        onProgress(`  Stacked ${parentEdges.length} model predictions → ${stackFeatures.length} features`);
+      }
+
+      // ─── MODEL ─────────────────────────────────────────────────
       else if (node.family === 'model') {
         const input = getInputPacket(nodeId, edges, nodePackets);
-        const { packet, engine, predictions } = await executeModel(node, input, onProgress);
+        const { packet, engine, predictions } = await executeModel(node, input, onProgress, signal);
         nodePackets[nodeId] = packet;
         fittedEngines[nodeId] = engine;
         result.predictions = predictions;
@@ -529,9 +614,10 @@ export async function executePipeline(
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getInputPacket(nodeId: string, edges: PipelineEdge[], packets: Record<string, DataPacket>): DataPacket {
-  const parentEdge = edges.find(e => e.target === nodeId);
-  if (!parentEdge) throw new Error('Node has no input connection');
-  const parentPacket = packets[parentEdge.source];
+  const parentEdges = edges.filter(e => e.target === nodeId);
+  if (parentEdges.length === 0) throw new Error('Node has no input connection');
+  // For single-input nodes, return the first (and only) parent packet
+  const parentPacket = packets[parentEdges[0].source];
   if (!parentPacket) throw new Error('Input node has not been processed yet');
   return parentPacket;
 }
@@ -543,7 +629,7 @@ export function runInference(
   inputRecord: Record<string, number>,
   fittedEngines: Record<string, any>,
   nodePackets: Record<string, DataPacket>
-): number | null {
+): { value: number; rawValue: string | number } | null {
   const { nodes, edges } = pipeline;
   const order = topologicalSort(nodes, edges);
   if (!order) return null;
@@ -598,6 +684,34 @@ export function runInference(
          const keepIdx = packet.train.columns.map((_, i) => i).filter(i => !colIndices.includes(i));
          rows[nodeId] = [...keepIdx.map(i => inputRow[i]), ...newSubRow];
        }
+    } else if (node.family === 'stacker') {
+       // Stacker: run all parent model engines and stack predictions
+       const parentEdges = edges.filter(e => e.target === nodeId);
+       const cfg = node.config as any;
+       const passthrough = cfg.passthrough ?? false;
+       const stackedValues: number[] = [];
+       let origRow: any[] | null = null;
+       let origPacket: DataPacket | null = null;
+
+       for (const pe of parentEdges) {
+         const eng = fittedEngines[pe.source];
+         const parentRow = rows[pe.source];
+         const pkt = nodePackets[pe.source];
+         if (!eng || !parentRow || !pkt) continue;
+         const tc = pkt.meta.targetColumn;
+         const fi = pkt.train.columns.map((c, i) => c !== tc ? i : -1).filter(i => i !== -1);
+         const xRow = [fi.map(i => parentRow[i])];
+         stackedValues.push(eng.predict(xRow)[0]);
+         if (!origRow) { origRow = parentRow; origPacket = pkt; }
+       }
+
+       if (passthrough && origRow && origPacket) {
+         const tc = origPacket.meta.targetColumn;
+         const fi = origPacket.train.columns.map((c, i) => c !== tc ? i : -1).filter(i => i !== -1);
+         rows[nodeId] = [...fi.map(i => origRow![i]), ...stackedValues, 0];
+       } else {
+         rows[nodeId] = [...stackedValues, 0];
+       }
     } else if (node.family === 'model') {
        const parentEdge = edges.find(e => e.target === nodeId);
        if (!parentEdge || !rows[parentEdge.source]) continue;
@@ -607,12 +721,67 @@ export function runInference(
        
        const inputRow = rows[parentEdge.source];
        const packet = nodePackets[parentEdge.source];
+       if (!packet) continue;
        const targetCol = packet.meta.targetColumn;
        
        const featuresIdx = packet.train.columns.map((c, i) => c !== targetCol ? i : -1).filter(i => i !== -1);
        const X = [featuresIdx.map(i => inputRow[i])];
        
-       return engine.predict(X)[0];
+       const pred = engine.predict(X)[0];
+       // Store row for downstream nodes (stacker might need it)
+       rows[nodeId] = inputRow;
+       // Check if this is the last model (no outgoing to stacker)
+       const outEdges = edges.filter(e => e.source === nodeId);
+       const feedsStacker = outEdges.some(e => {
+         const tgt = nodeMap.get(e.target);
+         return tgt?.family === 'stacker';
+       });
+       
+       if (!feedsStacker) {
+         let rawPred: string | number = pred;
+         
+         // Trace backwards to apply inverse transforms
+         let currId = nodeId;
+         const visited = new Set<string>();
+         while (currId) {
+           visited.add(currId);
+           const pEdge = edges.find(e => e.target === currId);
+           if (!pEdge) break;
+           const parentId = pEdge.source;
+           const pNode = nodeMap.get(parentId);
+           if (!pNode) break;
+           if (pNode.family === 'preprocessor') {
+             const pEng = fittedEngines[parentId];
+             const pCfg = pNode.config as any;
+             const pParentEdge = edges.find(e => e.target === parentId);
+             if (pParentEdge && pEng && pEng.inverse_transform) {
+                const ppPkt = nodePackets[pParentEdge.source];
+                if (ppPkt) {
+                  const selectedCols: string[] = pCfg.targetColumns || [];
+                  const targetColRaw = ppPkt.meta.targetColumn;
+                  let colIndices: number[];
+                  if (selectedCols.length > 0) {
+                    colIndices = selectedCols.map((c: string) => ppPkt.train.columns.indexOf(c)).filter((i: number) => i !== -1);
+                  } else {
+                    colIndices = ppPkt.train.columns.map((_, i) => i).filter(i => ppPkt.train.columns[i] !== targetColRaw);
+                  }
+                  
+                  const targetIdx = ppPkt.train.columns.indexOf(targetColRaw);
+                  const transformedIdx = colIndices.indexOf(targetIdx);
+                  if (transformedIdx !== -1) {
+                    // This preprocessor modified the target column!
+                    const dummyRow = new Array(colIndices.length).fill(0);
+                    dummyRow[transformedIdx] = Number(rawPred);
+                    const inverted = pEng.inverse_transform([dummyRow])[0];
+                    rawPred = inverted[transformedIdx];
+                  }
+                }
+             }
+           }
+           currId = parentId;
+         }
+         return { value: pred, rawValue: rawPred };
+       }
     }
   }
   return null;

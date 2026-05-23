@@ -18,6 +18,7 @@ export default function LogisticRegressionVisualization({
   const [weights, setWeights] = usePersistentState<Weights>('omodels-logistic-regression-weights', []); 
   const [lossHistory, setLossHistory] = usePersistentState<number[]>('omodels-logistic-regression-lossHistory', []);
   const [epochTarget, setEpochTarget] = usePersistentState('omodels-logistic-regression-epochTarget', 0);
+  const [persistedParams, setPersistedParams] = usePersistentState('omodels-logistic-regression-persisted-params', { dataset: '', numPoints: 0, noise: 0, degree: 1 });
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number; degree: number } | null>(null);
   const prevResetVersionRef = useRef(resetVersion);
 
@@ -125,17 +126,30 @@ export default function LogisticRegressionVisualization({
 
   /* Generate dataset */
   useEffect(() => {
-    if (!prevParamsRef.current) {
+    const isInitial = !prevParamsRef.current;
+    let shouldRegenerate = false;
+    
+    if (isInitial) {
       prevParamsRef.current = { dataset, numPoints, noise, degree };
-      if (points && points.length > 0) return;
+      if (points.length === 0 || 
+          persistedParams.dataset !== dataset || 
+          persistedParams.numPoints !== numPoints || 
+          persistedParams.noise !== noise ||
+          persistedParams.degree !== degree) {
+        shouldRegenerate = true;
+      }
+    } else {
+      const changed = 
+        prevParamsRef.current!.dataset !== dataset ||
+        prevParamsRef.current!.numPoints !== numPoints ||
+        prevParamsRef.current!.noise !== noise ||
+        prevParamsRef.current!.degree !== degree;
+      prevParamsRef.current = { dataset, numPoints, noise, degree };
+      if (changed) shouldRegenerate = true;
     }
-    const changed = 
-      prevParamsRef.current.dataset !== dataset ||
-      prevParamsRef.current.numPoints !== numPoints ||
-      prevParamsRef.current.noise !== noise ||
-      prevParamsRef.current.degree !== degree;
-    prevParamsRef.current = { dataset, numPoints, noise, degree };
-    if (!changed) return;
+
+    if (!shouldRegenerate) return;
+    setPersistedParams({ dataset, numPoints, noise, degree });
 
     if (dataset === 'custom' || dataset === 'import') return;
     const pts = generateClassificationData(dataset, numPoints, noise);

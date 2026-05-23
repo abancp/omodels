@@ -14,6 +14,7 @@ export default function DecisionTreeVisualization({
 
   const [points, setPoints] = usePersistentState<Point[]>('omodels-decision-tree-points', []);
   const [dtState, setDtState] = usePersistentState<DecisionTreeState | null>('omodels-decision-tree-dtState', null);
+  const [persistedParams, setPersistedParams] = usePersistentState('omodels-decision-tree-persisted-params', { dataset: '', numPoints: 0, noise: 0 });
   const prevParamsRef = useRef<{ dataset: string; numPoints: number; noise: number } | null>(null);
   const prevResetVersionRef = useRef(resetVersion);
 
@@ -67,16 +68,28 @@ export default function DecisionTreeVisualization({
   }, [importVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!prevParamsRef.current) {
+    const isInitial = !prevParamsRef.current;
+    let shouldRegenerate = false;
+    
+    if (isInitial) {
       prevParamsRef.current = { dataset, numPoints, noise };
-      if (points && points.length > 0) return;
+      if (points.length === 0 || 
+          persistedParams.dataset !== dataset || 
+          persistedParams.numPoints !== numPoints || 
+          persistedParams.noise !== noise) {
+        shouldRegenerate = true;
+      }
+    } else {
+      const changed = 
+        prevParamsRef.current!.dataset !== dataset ||
+        prevParamsRef.current!.numPoints !== numPoints ||
+        prevParamsRef.current!.noise !== noise;
+      prevParamsRef.current = { dataset, numPoints, noise };
+      if (changed) shouldRegenerate = true;
     }
-    const changed = 
-      prevParamsRef.current.dataset !== dataset ||
-      prevParamsRef.current.numPoints !== numPoints ||
-      prevParamsRef.current.noise !== noise;
-    prevParamsRef.current = { dataset, numPoints, noise };
-    if (!changed) return;
+
+    if (!shouldRegenerate) return;
+    setPersistedParams({ dataset, numPoints, noise });
 
     if (dataset === 'custom' || dataset === 'import') return;
     setPoints(generateClassificationData(dataset, numPoints, noise));

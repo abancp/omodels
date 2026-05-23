@@ -14,6 +14,7 @@ const FAMILY_COLORS: Record<string, string> = {
   split: '#818cf8',
   preprocessor: '#10b981',
   model: '#f59e0b',
+  stacker: '#a855f7',
   evaluation: '#ef4444',
   output: '#06b6d4',
 };

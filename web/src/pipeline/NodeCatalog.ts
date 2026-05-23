@@ -257,6 +257,23 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
     maxIncoming: 1,
   },
 
+  // ─── STACKER (ENSEMBLE) ────────────────────────────────────────────────────
+  {
+    family: 'stacker',
+    type: 'StackPredictions',
+    label: 'Stack Predictions',
+    icon: 'layers',
+    description: 'Collects predictions from multiple models and stacks them as new features for a meta-learner.',
+    color: '#a855f7',
+    defaultConfig: {
+      method: 'stack',
+      passthrough: false,
+    },
+    acceptsFrom: ['model'],
+    outputsTo: ['model', 'evaluation', 'output'],
+    maxIncoming: undefined, // unlimited — accepts from many models
+  },
+
   // ─── EVALUATION ────────────────────────────────────────────────────────────
   {
     family: 'evaluation',
@@ -308,6 +325,7 @@ export const FAMILY_META: Record<string, { label: string; color: string; icon: s
   split:        { label: 'Split',         color: '#818cf8', icon: 'call_split' },
   preprocessor: { label: 'Preprocessing', color: '#10b981', icon: 'auto_fix_high' },
   model:        { label: 'Models',        color: '#f59e0b', icon: 'psychology' },
+  stacker:      { label: 'Ensemble',      color: '#a855f7', icon: 'layers' },
   evaluation:   { label: 'Evaluation',    color: '#ef4444', icon: 'assessment' },
   output:       { label: 'Output',        color: '#06b6d4', icon: 'output' },
 };
