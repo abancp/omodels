@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { ThemeProvider } from './theme';
 import { PlaygroundProvider } from './store';
 import { registerKNN, registerLinearRegression, registerPolynomialRegression, registerLogisticRegression, registerSVM, registerNaiveBayes, registerDecisionTree, registerRandomForest, registerGBM, registerKMeans, registerDBSCAN, registerGMM, registerPerceptron, registerMLP, registerActivations } from './models';
@@ -163,6 +164,7 @@ export default function App() {
             </div>
           </div>
         )}
+        <Analytics />
       </PlaygroundProvider>
     </ThemeProvider>
   );
