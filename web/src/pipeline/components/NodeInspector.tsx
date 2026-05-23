@@ -332,7 +332,7 @@ export default function NodeInspector() {
   // Listen for context-menu tab switch events
   useEffect(() => {
     const onPreview = () => setTab('preview');
-    const onConfig  = () => setTab('config');
+    const onConfig = () => setTab('config');
     window.addEventListener('pipeline:preview-tab', onPreview);
     window.addEventListener('pipeline:config-tab', onConfig);
     return () => {
@@ -464,9 +464,9 @@ function InspectorEmpty({ pipeline }: any) {
       <div className="pipeline-inspector__section">
         <div className="pipeline-inspector__section-title">Quick Start</div>
         <div style={{ fontSize: 10, color: 'var(--c-on-surface-variant)', lineHeight: 1.6, opacity: 0.7 }}>
-          1. Drag a <strong>Dataset</strong> node onto the canvas<br/>
-          2. Upload a CSV file in the Dataset node config<br/>
-          3. Add preprocessors and models<br/>
+          1. Drag a <strong>Dataset</strong> node onto the canvas<br />
+          2. Upload a CSV file in the Dataset node config<br />
+          3. Add preprocessors and models<br />
           4. Connect nodes and click <strong>Run Pipeline</strong>
         </div>
       </div>
@@ -624,19 +624,19 @@ function NodeConfig({ node, updateNodeConfig, loadCSVToNode, featureNames, targe
           )}
           <div className="pipeline-inspector__section">
             <div className="pipeline-inspector__section-title">Parameters</div>
-          {node.type === 'SimpleImputer' && (
-            <Field label="Strategy" tooltip="Statistical strategy used to calculate missing numbers.">
-              <select className="pipeline-inspector__select" value={cfg.params.strategy ?? 'mean'} onChange={e => setParam('strategy', e.target.value)}>
-                <option value="mean">Mean (Average)</option>
-                <option value="median">Median (Middle value)</option>
-              </select>
-            </Field>
-          )}
-          {node.type === 'OneHotEncoder' && (
-            <Field label="Drop First" tooltip="Drop the first encoded column to prevent multicollinearity.">
-              <Toggle checked={cfg.params.dropFirst ?? false} onChange={v => setParam('dropFirst', v)} />
-            </Field>
-          )}
+            {node.type === 'SimpleImputer' && (
+              <Field label="Strategy" tooltip="Statistical strategy used to calculate missing numbers.">
+                <select className="pipeline-inspector__select" value={cfg.params.strategy ?? 'mean'} onChange={e => setParam('strategy', e.target.value)}>
+                  <option value="mean">Mean (Average)</option>
+                  <option value="median">Median (Middle value)</option>
+                </select>
+              </Field>
+            )}
+            {node.type === 'OneHotEncoder' && (
+              <Field label="Drop First" tooltip="Drop the first encoded column to prevent multicollinearity.">
+                <Toggle checked={cfg.params.dropFirst ?? false} onChange={v => setParam('dropFirst', v)} />
+              </Field>
+            )}
           </div>
         </>
       )}
@@ -644,69 +644,69 @@ function NodeConfig({ node, updateNodeConfig, loadCSVToNode, featureNames, targe
       {/* MODEL */}
       {node.family === 'model' && (() => {
         const tCol = targetColumn || 'Not Set';
-        
+
         return (
           <>
             <div className="pipeline-inspector__section">
               <div className="pipeline-inspector__section-title">Data Flow (X → y)</div>
               <div style={{ fontSize: 10, background: 'rgba(0,0,0,0.15)', padding: 10, borderRadius: 6, lineHeight: 1.4 }}>
                 <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center' }}>
-                   <strong style={{ color: '#f59e0b', width: 65, flexShrink: 0 }}>Predicts (y):</strong> 
-                   <span style={{ padding: '2px 6px', background: 'rgba(245, 158, 11, 0.1)', color: '#fcd34d', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 4, fontFamily: 'monospace' }}>
-                     {tCol}
-                   </span>
+                  <strong style={{ color: '#f59e0b', width: 65, flexShrink: 0 }}>Predicts (y):</strong>
+                  <span style={{ padding: '2px 6px', background: 'rgba(245, 158, 11, 0.1)', color: '#fcd34d', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 4, fontFamily: 'monospace' }}>
+                    {tCol}
+                  </span>
                 </div>
                 <div style={{ display: 'flex' }}>
-                   <strong style={{ color: '#10b981', width: 65, flexShrink: 0 }}>Inputs (X):</strong> 
-                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                     {featureNames.length > 0 ? featureNames.map((f, i) => (
-                       <span key={i} style={{ padding: '2px 6px', background: 'rgba(16, 185, 129, 0.1)', color: '#6ee7b7', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 4, fontFamily: 'monospace' }}>
-                         {f}
-                       </span>
-                     )) : <span style={{ opacity: 0.6 }}>No inputs flowing to this node.</span>}
-                   </div>
+                  <strong style={{ color: '#10b981', width: 65, flexShrink: 0 }}>Inputs (X):</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {featureNames.length > 0 ? featureNames.map((f, i) => (
+                      <span key={i} style={{ padding: '2px 6px', background: 'rgba(16, 185, 129, 0.1)', color: '#6ee7b7', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 4, fontFamily: 'monospace' }}>
+                        {f}
+                      </span>
+                    )) : <span style={{ opacity: 0.6 }}>No inputs flowing to this node.</span>}
+                  </div>
                 </div>
               </div>
               <div style={{ fontSize: 9, opacity: 0.6, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
-                 To change the target, configure the <strong>Dataset</strong> node.<br/>
-                 To change inputs, use a <strong>Drop Columns</strong> preprocessor.
+                To change the target, configure the <strong>Dataset</strong> node.<br />
+                To change inputs, use a <strong>Drop Columns</strong> preprocessor.
               </div>
             </div>
 
             <div className="pipeline-inspector__section">
               <div className="pipeline-inspector__section-title">Hyperparameters</div>
-            {cfg.params && Object.entries(cfg.params).map(([k, v]) => (
-              <Field key={k} label={k} tooltip={`Modify hyperparameter: ${k}`}>
-                {typeof v === 'number' ? (
-                  <input type="number" className="pipeline-inspector__input pipeline-inspector__input--small"
-                    value={v as number} step={v < 1 ? 0.001 : 1} onChange={e => setParam(k, +e.target.value)} />
-                ) : typeof v === 'boolean' ? (
-                  <Toggle checked={v as boolean} onChange={val => setParam(k, val)} />
-                ) : (
-                  <input type="text" className="pipeline-inspector__input pipeline-inspector__input--small"
-                    value={String(v)} onChange={e => setParam(k, e.target.value)} />
-                )}
-              </Field>
-            ))}
-          </div>
+              {cfg.params && Object.entries(cfg.params).map(([k, v]) => (
+                <Field key={k} label={k} tooltip={`Modify hyperparameter: ${k}`}>
+                  {typeof v === 'number' ? (
+                    <input type="number" className="pipeline-inspector__input pipeline-inspector__input--small"
+                      value={v as number} step={v < 1 ? 0.001 : 1} onChange={e => setParam(k, +e.target.value)} />
+                  ) : typeof v === 'boolean' ? (
+                    <Toggle checked={v as boolean} onChange={val => setParam(k, val)} />
+                  ) : (
+                    <input type="text" className="pipeline-inspector__input pipeline-inspector__input--small"
+                      value={String(v)} onChange={e => setParam(k, e.target.value)} />
+                  )}
+                </Field>
+              ))}
+            </div>
 
 
 
-          {node.type === 'MLPClassifier' && cfg.params?.hiddenLayers && (
-             <div className="pipeline-inspector__section">
-               <div className="pipeline-inspector__section-title">Network Architecture</div>
-               <div style={{ fontSize: 9, opacity: 0.8 }}>
-                 Input Features: <strong>{featureNames.length || cfg.trainingSchema?.shape?.[1] || 2}</strong>
-               </div>
-               <MlpDiagram 
-                 hiddenLayers={typeof cfg.params.hiddenLayers === 'string' 
-                    ? cfg.params.hiddenLayers.split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n)) 
-                    : (cfg.params.hiddenLayers as number[])} 
-                 inputFeatures={featureNames.length || cfg.trainingSchema?.shape?.[1] || 2} 
-               />
-             </div>
-          )}
-        </>
+            {node.type === 'MLPClassifier' && cfg.params?.hiddenLayers && (
+              <div className="pipeline-inspector__section">
+                <div className="pipeline-inspector__section-title">Network Architecture</div>
+                <div style={{ fontSize: 9, opacity: 0.8 }}>
+                  Input Features: <strong>{featureNames.length || cfg.trainingSchema?.shape?.[1] || 2}</strong>
+                </div>
+                <MlpDiagram
+                  hiddenLayers={typeof cfg.params.hiddenLayers === 'string'
+                    ? cfg.params.hiddenLayers.split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n))
+                    : (cfg.params.hiddenLayers as number[])}
+                  inputFeatures={featureNames.length || cfg.trainingSchema?.shape?.[1] || 2}
+                />
+              </div>
+            )}
+          </>
         );
       })()}
 
@@ -738,21 +738,21 @@ function MlpDiagram({ hiddenLayers, inputFeatures }: { hiddenLayers: number[]; i
   const maxNodes = 6;
   const clampedInputs = Math.min(inputFeatures, maxNodes);
   const layers = [clampedInputs, ...hiddenLayers.map(l => Math.min(l, maxNodes)), 1];
-  
+
   const width = 240;
   const height = 120;
   const paddingX = 20;
   const paddingY = 10;
-  
+
   const layerSpacing = (width - 2 * paddingX) / Math.max(1, layers.length - 1);
-  
-  const nodes: {x: number, y: number, layerIdx: number, isOmitted: boolean}[] = [];
+
+  const nodes: { x: number, y: number, layerIdx: number, isOmitted: boolean }[] = [];
   layers.forEach((nodeCount, layerIdx) => {
-    const isClamped = (layerIdx === 0 && inputFeatures > maxNodes) || (layerIdx > 0 && layerIdx < layers.length - 1 && hiddenLayers[layerIdx-1] > maxNodes);
-    
+    const isClamped = (layerIdx === 0 && inputFeatures > maxNodes) || (layerIdx > 0 && layerIdx < layers.length - 1 && hiddenLayers[layerIdx - 1] > maxNodes);
+
     const x = paddingX + layerIdx * layerSpacing;
     const ySpacing = (height - 2 * paddingY) / Math.max(1, nodeCount);
-    
+
     for (let i = 0; i < nodeCount; i++) {
       const y = paddingY + (i + 0.5) * ySpacing;
       nodes.push({ x, y, layerIdx, isOmitted: isClamped && i === Math.floor(nodeCount / 2) });
@@ -763,9 +763,9 @@ function MlpDiagram({ hiddenLayers, inputFeatures }: { hiddenLayers: number[]; i
     <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '16px 8px', display: 'flex', justifyContent: 'center', marginTop: 8 }}>
       <svg width={width} height={height} style={{ overflow: 'visible' }}>
         {/* Edges */}
-        {nodes.map((n1, i) => 
+        {nodes.map((n1, i) =>
           nodes.filter(n2 => n2.layerIdx === n1.layerIdx + 1).map((n2, j) => (
-             <line key={`${i}-${j}`} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+            <line key={`${i}-${j}`} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
           ))
         )}
         {/* Nodes */}
