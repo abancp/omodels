@@ -50,7 +50,7 @@ Since Omodels runs entirely in the browser, you can use the hosted version immed
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/omodels.git
+   git clone https://github.com/abancp/omodels.git
    cd omodels/web
    ```
 
